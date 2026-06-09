@@ -31,15 +31,23 @@
 
 ## Phase 2: 資料庫
 
-- [ ] 建立 database schema。
-- [ ] 建立 migration。
+- [ ] 使用 PostgreSQL/Postgres 作為主要資料庫。
+- [ ] 建立 database schema 文件與 migration。
+- [ ] 建立 UUID 主鍵策略。
+- [ ] 建立 `contacts`、`companies`、`business_cards`、`contact_methods`、`addresses`。
+- [ ] 建立 `relationship_notes`、`classification_types`、`classifications`、`contact_classifications`。
+- [ ] 建立 `tags`、`contact_tags`、`audit_logs`。
+- [ ] 建立 `jsonb` 欄位保存 OCR/LLM 原始輸出、抽取結果與 metadata。
+- [ ] 建立 email、電話、姓名、公司、分類、建立時間索引。
 - [ ] 建立 seed 或 sample data。
 - [ ] 建立 contact/company/card/note/classification 基本 CRUD。
 
 驗證方式：
 
 - migration 可從空資料庫跑完。
+- schema 與 [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md) 一致。
 - 測試可建立、查詢、更新、刪除核心資料。
+- 可用 email、電話、姓名、公司、分類查詢資料。
 
 ## Phase 3: 檔案上傳
 
@@ -142,4 +150,3 @@
 
 - 使用 token 才能呼叫第三方 API。
 - 可備份並還原資料庫與上傳檔。
-

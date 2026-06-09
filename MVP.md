@@ -26,7 +26,19 @@
 - 上傳後建立 `business_cards` 紀錄。
 - 原始檔保存到本地 volume。
 
-### 3. OCR 文字擷取
+### 3. PostgreSQL 資料庫 Schema
+
+驗收標準：
+
+- 使用 PostgreSQL/Postgres 作為 MVP 主要資料庫。
+- 建立 migration，可從空資料庫建立完整 schema。
+- schema 至少包含 `contacts`、`companies`、`business_cards`、`contact_methods`、`addresses`、`relationship_notes`、`classification_types`、`classifications`、`contact_classifications`、`tags`、`contact_tags`、`audit_logs`。
+- `business_cards` 需保存原始檔 metadata、OCR 原文、LLM 原始輸出、結構化抽取結果、處理狀態與錯誤訊息。
+- `contacts`、`companies`、`relationship_notes` 可支援從一張名片建立一筆完整人脈資料。
+- email、電話、姓名、公司、分類、建立時間需有適合查詢的索引。
+- 使用 UUID 主鍵與 `jsonb` 保存 OCR/LLM metadata。
+
+### 4. OCR 文字擷取
 
 驗收標準：
 
@@ -35,7 +47,7 @@
 - OCR 原文保存到資料庫。
 - 失敗時保存錯誤訊息，方便重試。
 
-### 4. LLM 結構化抽取
+### 5. LLM 結構化抽取
 
 驗收標準：
 
@@ -44,7 +56,7 @@
 - 欄位至少包含姓名、公司、職稱、email、電話、地址、網站。
 - schema 驗證失敗時可重試或標記為需要人工處理。
 
-### 5. 人工確認與儲存
+### 6. 人工確認與儲存
 
 驗收標準：
 
@@ -53,7 +65,7 @@
 - 儲存後建立 contact、company、relationship note。
 - 若 email 或電話相同，提示可能重複資料。
 
-### 6. 分類
+### 7. 分類
 
 驗收標準：
 
@@ -61,7 +73,7 @@
 - 產業別可由 LLM 建議，但使用者可修改。
 - 地區分類可先從地址文字抽取國家/城市。
 
-### 7. 查詢
+### 8. 查詢
 
 驗收標準：
 
@@ -69,7 +81,7 @@
 - API 可用 query parameters 搜尋。
 - CLI 可搜尋與顯示聯絡人。
 
-### 8. API 文件
+### 9. API 文件
 
 驗收標準：
 
@@ -125,4 +137,3 @@ MVP 完成時，使用者可以：
 4. 修正並補充認識紀錄。
 5. 保存到資料庫。
 6. 用 Web UI、API、CLI 查詢。
-

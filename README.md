@@ -20,7 +20,7 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 
 - Frontend: Next.js 或同等 SSR/SPA 框架。
 - Backend API: Node.js/TypeScript 或 Python/FastAPI。若重視 OpenAPI 自動生成，FastAPI 是較直接的選項。
-- Database: PostgreSQL。若需要純本地輕量模式，可額外支援 SQLite，但正式環境以 PostgreSQL 為主。
+- Database: PostgreSQL/Postgres。若需要純本地輕量模式，可額外支援 SQLite，但正式環境以 PostgreSQL 為主。
 - File storage: 本地 volume，正式環境可替換為 S3 相容儲存。
 - OCR: Tesseract OCR 或 PaddleOCR 作為本地 OCR 起點。
 - LLM: Ollama，透過 OpenAI-compatible API endpoint 呼叫。
@@ -49,6 +49,8 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 - `tags`: 自訂標籤。
 - `classifications`: 公司分類、地區分類、產業分類。
 - `audit_logs`: 匯入、修改、合併、刪除紀錄。
+
+詳細 PostgreSQL schema、索引、關聯與 migration 規劃見 [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md)。
 
 ## Docker 執行目標
 
@@ -129,4 +131,3 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 3. `git status` 確認異動範圍。
 4. commit。
 5. push 到遠端分支。
-
