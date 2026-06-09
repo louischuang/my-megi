@@ -84,6 +84,7 @@ docker compose up --build
 
 啟動後可開啟：
 
+- Web UI: `http://localhost:8000`
 - API health check: `http://localhost:8000/health`
 - Swagger UI: `http://localhost:8000/docs`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
@@ -93,6 +94,13 @@ CLI 安裝後可先檢查服務：
 ```bash
 mymegi health
 ```
+
+目前 Web UI 提供：
+
+- Dashboard 統計聯絡人、公司、名片與待處理名片數。
+- 名片上傳表單，支援認識場合、日期與備註。
+- 最近匯入名片列表。
+- 聯絡人搜尋列表。
 
 ## API 與 CLI
 

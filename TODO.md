@@ -51,11 +51,12 @@
 
 ## Phase 3: 檔案上傳
 
-- [ ] Web UI 上傳名片。
-- [ ] API multipart upload。
-- [ ] 檔案類型與大小限制。
-- [ ] 原始檔保存到 volume。
-- [ ] 建立 business card import job。
+- [x] Web UI 上傳名片。
+- [x] API multipart upload。
+- [x] 檔案類型與大小限制。
+- [x] 原始檔保存到 volume。
+- [x] 建立 business card import record。
+- [ ] 建立 OCR/LLM import job。
 
 驗證方式：
 

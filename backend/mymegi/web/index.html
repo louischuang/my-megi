@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Megi</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>My Megi</h1>
+        <p>名片與人脈資料庫</p>
+      </div>
+      <nav aria-label="Primary">
+        <a href="#upload">上傳</a>
+        <a href="#contacts">聯絡人</a>
+        <a href="/docs">API</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="status-grid" aria-label="Dashboard">
+        <article class="metric">
+          <span>聯絡人</span>
+          <strong id="metric-contacts">0</strong>
+        </article>
+        <article class="metric">
+          <span>公司</span>
+          <strong id="metric-companies">0</strong>
+        </article>
+        <article class="metric">
+          <span>名片</span>
+          <strong id="metric-cards">0</strong>
+        </article>
+        <article class="metric attention">
+          <span>待處理</span>
+          <strong id="metric-pending">0</strong>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <div class="panel upload-panel" id="upload">
+          <div class="panel-title">
+            <h2>名片上傳</h2>
+            <span id="upload-state">待命</span>
+          </div>
+          <form id="upload-form">
+            <label class="file-drop">
+              <input id="card-file" name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required />
+              <span class="file-title">選擇名片檔案</span>
+              <span class="file-meta" id="file-meta">JPG、PNG、WEBP、PDF，最大 20MB</span>
+            </label>
+
+            <div class="field-grid">
+              <label>
+                <span>認識場合</span>
+                <input name="metAt" type="text" placeholder="2026 Taipei Expo" />
+              </label>
+              <label>
+                <span>日期</span>
+                <input name="metOn" type="date" />
+              </label>
+            </div>
+
+            <label>
+              <span>備註</span>
+              <textarea name="note" rows="4" placeholder="由誰介紹、聊了什麼、下一步"></textarea>
+            </label>
+
+            <button type="submit">上傳名片</button>
+          </form>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <h2>最近匯入</h2>
+            <button class="ghost" type="button" id="refresh-cards">重新整理</button>
+          </div>
+          <div class="list" id="cards-list"></div>
+        </div>
+      </section>
+
+      <section class="panel contacts-panel" id="contacts">
+        <div class="panel-title">
+          <h2>聯絡人</h2>
+          <form class="search" id="contact-search">
+            <input name="q" type="search" placeholder="搜尋姓名、公司、Email、電話" />
+            <button type="submit">搜尋</button>
+          </form>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>姓名</th>
+                <th>公司</th>
+                <th>職稱</th>
+                <th>建立時間</th>
+              </tr>
+            </thead>
+            <tbody id="contacts-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
+
