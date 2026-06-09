@@ -237,6 +237,26 @@ textarea {
   font-size: 14px;
 }
 
+.list-item small {
+  display: block;
+  max-width: 52ch;
+  margin-top: 4px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.error-text {
+  color: #a73a3a;
+}
+
+.item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .badge {
   min-width: 82px;
   text-align: center;
@@ -246,6 +266,12 @@ textarea {
   color: var(--muted);
   font-size: 12px;
   text-transform: uppercase;
+}
+
+button.compact {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 13px;
 }
 
 .contacts-panel {
@@ -313,5 +339,12 @@ th {
   .search {
     grid-template-columns: 1fr;
   }
-}
 
+  .list-item {
+    grid-template-columns: 1fr;
+  }
+
+  .item-actions {
+    justify-content: space-between;
+  }
+}

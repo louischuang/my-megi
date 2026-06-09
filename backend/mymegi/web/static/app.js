@@ -55,12 +55,36 @@ async function loadCards() {
           <div>
             <strong>${escapeHtml(item.fileName)}</strong>
             <span>${fileSize(item.fileSizeBytes)} · ${formatDate(item.createdAt)}</span>
+            ${
+              item.errorMessage
+                ? `<small class="error-text">${escapeHtml(item.errorMessage)}</small>`
+                : item.ocrPreview
+                  ? `<small>${escapeHtml(item.ocrPreview)}</small>`
+                  : ""
+            }
           </div>
-          <span class="badge">${escapeHtml(item.status)}</span>
+          <div class="item-actions">
+            <span class="badge">${escapeHtml(item.status)}</span>
+            <button class="ghost compact" type="button" data-extract-card="${escapeHtml(item.id)}">
+              辨識
+            </button>
+          </div>
         </article>
       `,
     )
     .join("");
+}
+
+async function extractCard(cardId, button) {
+  button.disabled = true;
+  button.textContent = "辨識中";
+  try {
+    await fetchJson(`/api/cards/${cardId}/extract`, { method: "POST" });
+    await refreshAll();
+  } catch (error) {
+    console.error(error);
+    await loadCards();
+  }
 }
 
 async function loadContacts() {
@@ -118,6 +142,12 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
 });
 
 document.querySelector("#refresh-cards").addEventListener("click", loadCards);
+
+document.querySelector("#cards-list").addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-extract-card]");
+  if (!button) return;
+  await extractCard(button.dataset.extractCard, button);
+});
 
 document.querySelector("#contact-search").addEventListener("submit", async (event) => {
   event.preventDefault();

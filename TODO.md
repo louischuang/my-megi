@@ -56,7 +56,8 @@
 - [x] 檔案類型與大小限制。
 - [x] 原始檔保存到 volume。
 - [x] 建立 business card import record。
-- [ ] 建立 OCR/LLM import job。
+- [x] 建立 OCR import action。
+- [ ] 建立 LLM import job。
 
 驗證方式：
 
@@ -66,10 +67,10 @@
 
 ## Phase 4: OCR Pipeline
 
-- [ ] 整合本地 OCR engine。
-- [ ] 實作同步或背景任務處理。
-- [ ] 保存 OCR 原文與錯誤訊息。
-- [ ] 支援重新處理。
+- [x] 整合本地 OCR engine。
+- [x] 實作同步或背景任務處理。
+- [x] 保存 OCR 原文與錯誤訊息。
+- [x] 支援重新處理。
 
 驗證方式：
 

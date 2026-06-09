@@ -1,9 +1,10 @@
 import json
+import asyncio
 from contextlib import asynccontextmanager
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
@@ -11,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 
 from mymegi.config import get_settings
 from mymegi.db import database
+from mymegi.ocr import OcrError, run_tesseract_ocr
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -83,7 +85,9 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
     async with database.acquire() as connection:
         rows = await connection.fetch(
             """
-            select id, original_filename, mime_type, file_size_bytes, status, created_at, error_message
+            select
+              id, original_filename, mime_type, file_size_bytes, status,
+              created_at, error_message, left(coalesce(ocr_text, ''), 160) as ocr_preview
             from business_cards
             order by created_at desc
             limit $1
@@ -100,6 +104,7 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
                 "status": row["status"],
                 "createdAt": row["created_at"].isoformat(),
                 "errorMessage": row["error_message"],
+                "ocrPreview": row["ocr_preview"],
             }
             for row in rows
         ]
@@ -166,6 +171,89 @@ async def upload_card(
         "cardId": str(card_id),
         "status": "pending",
         "fileName": file.filename or safe_name,
+    }
+
+
+@app.post("/api/cards/{card_id}/extract")
+async def extract_card(card_id: UUID) -> dict[str, Any]:
+    settings = get_settings()
+    async with database.acquire() as connection:
+        card = await connection.fetchrow(
+            """
+            select id, storage_path, mime_type
+            from business_cards
+            where id = $1
+            """,
+            card_id,
+        )
+        if card is None:
+            raise HTTPException(status_code=404, detail="Business card not found")
+
+        await connection.execute(
+            """
+            update business_cards
+            set status = 'processing',
+                error_code = null,
+                error_message = null,
+                updated_at = now()
+            where id = $1
+            """,
+            card_id,
+        )
+
+    try:
+        result = await asyncio.to_thread(
+            run_tesseract_ocr,
+            Path(card["storage_path"]),
+            card["mime_type"],
+        )
+    except OcrError as exc:
+        async with database.acquire() as connection:
+            await connection.execute(
+                """
+                update business_cards
+                set status = 'failed',
+                    error_code = $2,
+                    error_message = $3,
+                    ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $4::jsonb,
+                    updated_at = now(),
+                    processed_at = now()
+                where id = $1
+                """,
+                card_id,
+                exc.code,
+                exc.message,
+                json.dumps({"lastOcrError": exc.metadata}),
+            )
+        raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message})
+
+    status = "completed" if result.text else "needs_review"
+    async with database.acquire() as connection:
+        await connection.execute(
+            """
+            update business_cards
+            set status = $2,
+                ocr_engine = $3,
+                ocr_text = $4,
+                ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $5::jsonb,
+                error_code = null,
+                error_message = null,
+                updated_at = now(),
+                processed_at = now()
+            where id = $1
+            """,
+            card_id,
+            status,
+            settings.ocr_engine,
+            result.text,
+            json.dumps({"lastOcrRun": result.metadata}),
+        )
+
+    return {
+        "cardId": str(card_id),
+        "status": status,
+        "ocrText": result.text,
+        "metadata": result.metadata,
     }
 
 
