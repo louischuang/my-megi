@@ -1,0 +1,2 @@
+"""My Megi CLI package."""
+

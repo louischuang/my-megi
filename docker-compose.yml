@@ -1,0 +1,54 @@
+services:
+  app:
+    build:
+      context: .
+    env_file:
+      - .env.example
+    environment:
+      DATABASE_URL: postgresql://mymegi:mymegi@db:5432/mymegi
+      UPLOAD_DIR: /data/uploads
+      OPENAI_BASE_URL: http://ollama:11434/v1
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    volumes:
+      - uploads:/data/uploads
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: mymegi
+      POSTGRES_USER: mymegi
+      POSTGRES_PASSWORD: mymegi
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mymegi -d mymegi"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles:
+      - llm
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  postgres_data:
+  uploads:
+  ollama_data:
+

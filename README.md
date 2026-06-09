@@ -73,6 +73,27 @@ OCR_ENGINE=tesseract
 APP_ENV=local
 ```
 
+## 本地開發
+
+目前專案採用 Python/FastAPI 後端，CLI 會透過同一組 HTTP API 操作系統。
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+啟動後可開啟：
+
+- API health check: `http://localhost:8000/health`
+- Swagger UI: `http://localhost:8000/docs`
+- OpenAPI JSON: `http://localhost:8000/openapi.json`
+
+CLI 安裝後可先檢查服務：
+
+```bash
+mymegi health
+```
+
 ## API 與 CLI
 
 API 會以 OpenAPI/Swagger 文件公開，初期端點包含：

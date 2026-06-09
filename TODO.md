@@ -15,13 +15,13 @@
 
 ## Phase 1: 專案骨架
 
-- [ ] 選定主要技術路線。
-- [ ] 建立 app/backend 專案。
-- [ ] 建立 formatter、linter、test runner。
-- [ ] 建立 `.env.example`。
-- [ ] 建立 Dockerfile。
-- [ ] 建立 `docker-compose.yml`。
-- [ ] 建立健康檢查端點。
+- [x] 選定主要技術路線。
+- [x] 建立 app/backend 專案。
+- [x] 建立 formatter、linter、test runner。
+- [x] 建立 `.env.example`。
+- [x] 建立 Dockerfile。
+- [x] 建立 `docker-compose.yml`。
+- [x] 建立健康檢查端點。
 
 驗證方式：
 
@@ -31,14 +31,14 @@
 
 ## Phase 2: 資料庫
 
-- [ ] 使用 PostgreSQL/Postgres 作為主要資料庫。
-- [ ] 建立 database schema 文件與 migration。
-- [ ] 建立 UUID 主鍵策略。
-- [ ] 建立 `contacts`、`companies`、`business_cards`、`contact_methods`、`addresses`。
-- [ ] 建立 `relationship_notes`、`classification_types`、`classifications`、`contact_classifications`。
-- [ ] 建立 `tags`、`contact_tags`、`audit_logs`。
-- [ ] 建立 `jsonb` 欄位保存 OCR/LLM 原始輸出、抽取結果與 metadata。
-- [ ] 建立 email、電話、姓名、公司、分類、建立時間索引。
+- [x] 使用 PostgreSQL/Postgres 作為主要資料庫。
+- [x] 建立 database schema 文件與 migration。
+- [x] 建立 UUID 主鍵策略。
+- [x] 建立 `contacts`、`companies`、`business_cards`、`contact_methods`、`addresses`。
+- [x] 建立 `relationship_notes`、`classification_types`、`classifications`、`contact_classifications`。
+- [x] 建立 `tags`、`contact_tags`、`audit_logs`。
+- [x] 建立 `jsonb` 欄位保存 OCR/LLM 原始輸出、抽取結果與 metadata。
+- [x] 建立 email、電話、姓名、公司、分類、建立時間索引。
 - [ ] 建立 seed 或 sample data。
 - [ ] 建立 contact/company/card/note/classification 基本 CRUD。
 
