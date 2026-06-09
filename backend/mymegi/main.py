@@ -12,12 +12,25 @@ from fastapi.staticfiles import StaticFiles
 
 from mymegi.config import get_settings
 from mymegi.db import database
+from mymegi.llm import generate_contact_draft
 from mymegi.ocr import OcrError, run_tesseract_ocr
 
 
 APP_DIR = Path(__file__).resolve().parent
 WEB_DIR = APP_DIR / "web"
 STATIC_DIR = WEB_DIR / "static"
+
+
+def json_object(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str) and value.strip():
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
 
 
 @asynccontextmanager
@@ -87,7 +100,8 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
             """
             select
               id, original_filename, mime_type, file_size_bytes, status,
-              created_at, error_message, left(coalesce(ocr_text, ''), 160) as ocr_preview
+              created_at, error_message, left(coalesce(ocr_text, ''), 160) as ocr_preview,
+              extracted_data
             from business_cards
             order by created_at desc
             limit $1
@@ -105,6 +119,7 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
                 "createdAt": row["created_at"].isoformat(),
                 "errorMessage": row["error_message"],
                 "ocrPreview": row["ocr_preview"],
+                "extractedData": json_object(row["extracted_data"]),
             }
             for row in rows
         ]
@@ -254,6 +269,51 @@ async def extract_card(card_id: UUID) -> dict[str, Any]:
         "status": status,
         "ocrText": result.text,
         "metadata": result.metadata,
+    }
+
+
+@app.post("/api/cards/{card_id}/structure")
+async def structure_card(card_id: UUID) -> dict[str, Any]:
+    settings = get_settings()
+    async with database.acquire() as connection:
+        card = await connection.fetchrow(
+            """
+            select id, ocr_text
+            from business_cards
+            where id = $1
+            """,
+            card_id,
+        )
+        if card is None:
+            raise HTTPException(status_code=404, detail="Business card not found")
+        if not card["ocr_text"]:
+            raise HTTPException(status_code=409, detail="Business card has no OCR text")
+
+    result = await generate_contact_draft(card["ocr_text"], settings)
+    async with database.acquire() as connection:
+        await connection.execute(
+            """
+            update business_cards
+            set status = 'needs_review',
+                llm_provider = $2,
+                llm_model = $3,
+                llm_raw_output = $4::jsonb,
+                extracted_data = $5::jsonb,
+                updated_at = now()
+            where id = $1
+            """,
+            card_id,
+            result.source,
+            settings.llm_model,
+            json.dumps(result.raw_output, ensure_ascii=False),
+            json.dumps(result.data, ensure_ascii=False),
+        )
+
+    return {
+        "cardId": str(card_id),
+        "status": "needs_review",
+        "source": result.source,
+        "draft": result.data,
     }
 
 

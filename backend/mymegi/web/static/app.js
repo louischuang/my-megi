@@ -24,6 +24,17 @@ const escapeHtml = (value) =>
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 
+const parseDraft = (value) => {
+  if (!value) return {};
+  if (typeof value === "object") return value;
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -50,7 +61,12 @@ async function loadCards() {
   }
   container.innerHTML = data.items
     .map(
-      (item) => `
+      (item) => {
+        const draft = parseDraft(item.extractedData);
+        const draftText = draft.name
+          ? `${draft.name}${draft.company?.englishName ? ` · ${draft.company.englishName}` : ""}`
+          : "";
+        return `
         <article class="list-item">
           <div>
             <strong>${escapeHtml(item.fileName)}</strong>
@@ -58,6 +74,8 @@ async function loadCards() {
             ${
               item.errorMessage
                 ? `<small class="error-text">${escapeHtml(item.errorMessage)}</small>`
+                : draftText
+                  ? `<small class="draft-text">${escapeHtml(draftText)}</small>`
                 : item.ocrPreview
                   ? `<small>${escapeHtml(item.ocrPreview)}</small>`
                   : ""
@@ -68,9 +86,13 @@ async function loadCards() {
             <button class="ghost compact" type="button" data-extract-card="${escapeHtml(item.id)}">
               辨識
             </button>
+            <button class="ghost compact" type="button" data-structure-card="${escapeHtml(item.id)}">
+              整理
+            </button>
           </div>
         </article>
-      `,
+      `;
+      },
     )
     .join("");
 }
@@ -80,6 +102,18 @@ async function extractCard(cardId, button) {
   button.textContent = "辨識中";
   try {
     await fetchJson(`/api/cards/${cardId}/extract`, { method: "POST" });
+    await refreshAll();
+  } catch (error) {
+    console.error(error);
+    await loadCards();
+  }
+}
+
+async function structureCard(cardId, button) {
+  button.disabled = true;
+  button.textContent = "整理中";
+  try {
+    await fetchJson(`/api/cards/${cardId}/structure`, { method: "POST" });
     await refreshAll();
   } catch (error) {
     console.error(error);
@@ -144,9 +178,15 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
 document.querySelector("#refresh-cards").addEventListener("click", loadCards);
 
 document.querySelector("#cards-list").addEventListener("click", async (event) => {
-  const button = event.target.closest("[data-extract-card]");
-  if (!button) return;
-  await extractCard(button.dataset.extractCard, button);
+  const extractButton = event.target.closest("[data-extract-card]");
+  if (extractButton) {
+    await extractCard(extractButton.dataset.extractCard, extractButton);
+    return;
+  }
+  const structureButton = event.target.closest("[data-structure-card]");
+  if (structureButton) {
+    await structureCard(structureButton.dataset.structureCard, structureButton);
+  }
 });
 
 document.querySelector("#contact-search").addEventListener("submit", async (event) => {

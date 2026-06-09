@@ -79,11 +79,11 @@
 
 ## Phase 5: Ollama / OpenAI-compatible LLM
 
-- [ ] 建立 OpenAI-compatible client。
-- [ ] 設定 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`LLM_MODEL`。
-- [ ] 設計 extraction prompt。
-- [ ] 建立 JSON schema 驗證。
-- [ ] 實作解析結果重試與錯誤處理。
+- [x] 建立 OpenAI-compatible client。
+- [x] 設定 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`LLM_MODEL`。
+- [x] 設計 extraction prompt。
+- [x] 建立 JSON schema 驗證。
+- [x] 實作解析結果重試與錯誤處理。
 
 驗證方式：
 

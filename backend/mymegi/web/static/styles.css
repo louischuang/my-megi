@@ -251,6 +251,11 @@ textarea {
   color: #a73a3a;
 }
 
+.draft-text {
+  color: var(--accent);
+  font-weight: 650;
+}
+
 .item-actions {
   display: flex;
   align-items: center;
