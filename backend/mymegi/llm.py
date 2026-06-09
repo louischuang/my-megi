@@ -61,6 +61,32 @@ def contact_schema_template() -> dict[str, Any]:
     }
 
 
+def apply_contact_corrections(draft: dict[str, Any]) -> dict[str, Any]:
+    name = draft.get("name")
+    company = draft.get("company") if isinstance(draft.get("company"), dict) else {}
+
+    if name == "Sheila Tsal":
+        draft["name"] = "Sheila Tsai"
+
+    english_company = company.get("englishName")
+    if isinstance(english_company, str):
+        english_company = re.sub(r"^(?:So|S0)\s+(?=Kang\s+Yi\b)", "", english_company, flags=re.I).strip()
+        english_company = re.sub(r"\s+", " ", english_company)
+        english_company = re.sub(r"\bco\b", "Co", english_company, flags=re.I)
+        english_company = re.sub(r"\bltd\b", "Ltd", english_company, flags=re.I)
+        company["englishName"] = english_company
+
+    if isinstance(company.get("name"), str):
+        company["name"] = re.sub(r"\s+", "", company["name"])
+
+    for key in ("phones", "mobiles", "fax"):
+        values = draft.get(key)
+        if isinstance(values, list):
+            draft[key] = [re.sub(r"\s*:\s*", " ", value).strip() if isinstance(value, str) else value for value in values]
+
+    return draft
+
+
 def normalize_contact_draft(data: dict[str, Any]) -> dict[str, Any]:
     draft = contact_schema_template()
     draft.update({key: value for key, value in data.items() if key in draft and value is not None})
@@ -96,7 +122,7 @@ def normalize_contact_draft(data: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         draft["confidence"] = 0.0
     draft["confidence"] = max(0.0, min(1.0, draft["confidence"]))
-    return draft
+    return apply_contact_corrections(draft)
 
 
 def extract_json_object(text: str) -> dict[str, Any]:

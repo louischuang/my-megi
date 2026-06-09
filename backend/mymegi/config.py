@@ -16,11 +16,10 @@ class Settings(BaseSettings):
     upload_dir: Path = Field(default=Path("uploads"), alias="UPLOAD_DIR")
     openai_base_url: str = Field(default="http://localhost:11434/v1", alias="OPENAI_BASE_URL")
     openai_api_key: str = Field(default="ollama", alias="OPENAI_API_KEY")
-    llm_model: str = Field(default="llava:latest", alias="LLM_MODEL")
+    llm_model: str = Field(default="gemma4:e4b", alias="LLM_MODEL")
     ocr_engine: str = Field(default="tesseract", alias="OCR_ENGINE")
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

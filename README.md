@@ -73,6 +73,23 @@ OCR_ENGINE=tesseract
 APP_ENV=local
 ```
 
+目前本地測試使用外部 Ollama 主機：
+
+```env
+OPENAI_BASE_URL=http://192.168.150.221:11434/v1
+OPENAI_API_KEY=ollama
+LLM_MODEL=gemma4:e4b
+```
+
+已掃描到的 Ollama models：
+
+- `gemma4:e4b`: 已實測 OpenAI-compatible chat completions，可穩定回傳 JSON，作為目前預設模型。
+- `gemma4:26b`: 支援 vision/completion，但本次簡短 JSON 測試超過合理等待時間，暫不作為互動式預設。
+- `llava:latest`: 支援 vision，可保留作為圖片直接辨識候選。
+- `Qwen3.6:35b-a3b`
+- `qwen3.5:27b`
+- `lfm2:latest`
+
 ## 本地開發
 
 目前專案採用 Python/FastAPI 後端，CLI 會透過同一組 HTTP API 操作系統。
