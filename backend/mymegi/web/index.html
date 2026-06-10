@@ -81,6 +81,107 @@
         </div>
       </section>
 
+      <section class="panel review-panel" id="review">
+        <div class="panel-title">
+          <h2>名片審核</h2>
+          <span id="review-state">未選取</span>
+        </div>
+        <div class="review-empty" id="review-empty">從最近匯入選擇一張名片進行審核</div>
+        <div class="review-workbench" id="review-workbench" hidden>
+          <div class="evidence-column">
+            <div class="card-preview" id="card-preview"></div>
+            <label>
+              <span>OCR 文字</span>
+              <textarea id="ocr-text" rows="9" readonly></textarea>
+            </label>
+          </div>
+          <form id="review-form">
+            <input name="cardId" type="hidden" />
+            <div class="field-grid">
+              <label>
+                <span>姓名</span>
+                <input name="name" type="text" required />
+              </label>
+              <label>
+                <span>職稱</span>
+                <input name="title" type="text" />
+              </label>
+            </div>
+            <div class="field-grid">
+              <label>
+                <span>公司中文</span>
+                <input name="companyName" type="text" />
+              </label>
+              <label>
+                <span>公司英文</span>
+                <input name="companyEnglishName" type="text" />
+              </label>
+            </div>
+            <div class="field-grid three">
+              <label>
+                <span>Email</span>
+                <input name="emails" type="text" />
+              </label>
+              <label>
+                <span>手機</span>
+                <input name="mobiles" type="text" />
+              </label>
+              <label>
+                <span>電話</span>
+                <input name="phones" type="text" />
+              </label>
+            </div>
+            <div class="field-grid three">
+              <label>
+                <span>傳真</span>
+                <input name="fax" type="text" />
+              </label>
+              <label>
+                <span>統編</span>
+                <input name="taxId" type="text" />
+              </label>
+              <label>
+                <span>產業</span>
+                <input name="industry" type="text" />
+              </label>
+            </div>
+            <label>
+              <span>地址</span>
+              <input name="addressRaw" type="text" />
+            </label>
+            <div class="field-grid three">
+              <label>
+                <span>國家</span>
+                <input name="country" type="text" />
+              </label>
+              <label>
+                <span>城市</span>
+                <input name="city" type="text" />
+              </label>
+              <label>
+                <span>行政區</span>
+                <input name="district" type="text" />
+              </label>
+            </div>
+            <div class="field-grid">
+              <label>
+                <span>認識場合</span>
+                <input name="metAt" type="text" />
+              </label>
+              <label>
+                <span>日期</span>
+                <input name="metOn" type="date" />
+              </label>
+            </div>
+            <label>
+              <span>認識備註</span>
+              <textarea name="note" rows="3"></textarea>
+            </label>
+            <button type="submit">儲存為聯絡人</button>
+          </form>
+        </div>
+      </section>
+
       <section class="panel contacts-panel" id="contacts">
         <div class="panel-title">
           <h2>聯絡人</h2>
@@ -108,4 +209,3 @@
     <script src="/static/app.js" type="module"></script>
   </body>
 </html>
-

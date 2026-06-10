@@ -1,14 +1,16 @@
 import json
 import asyncio
 from contextlib import asynccontextmanager
+from datetime import date
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from mymegi.config import get_settings
 from mymegi.db import database
@@ -31,6 +33,62 @@ def json_object(value: Any) -> dict[str, Any]:
             return {}
         return parsed if isinstance(parsed, dict) else {}
     return {}
+
+
+def normalize_lookup(value: str) -> str:
+    return " ".join(value.strip().lower().split())
+
+
+def clean_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def parse_optional_date(value: str | None, field_name: str) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=f"{field_name} must be YYYY-MM-DD") from exc
+
+
+class CompanyDraft(BaseModel):
+    name: str | None = None
+    englishName: str | None = None
+    taxId: str | None = None
+    industry: str | None = None
+
+
+class AddressDraft(BaseModel):
+    raw: str | None = None
+    country: str | None = None
+    city: str | None = None
+    district: str | None = None
+
+
+class ClassificationsDraft(BaseModel):
+    company: list[str] = Field(default_factory=list)
+    region: list[str] = Field(default_factory=list)
+    industry: list[str] = Field(default_factory=list)
+
+
+class ConfirmCardRequest(BaseModel):
+    name: str
+    title: str | None = None
+    company: CompanyDraft = Field(default_factory=CompanyDraft)
+    emails: list[str] = Field(default_factory=list)
+    phones: list[str] = Field(default_factory=list)
+    mobiles: list[str] = Field(default_factory=list)
+    fax: list[str] = Field(default_factory=list)
+    website: str | None = None
+    address: AddressDraft = Field(default_factory=AddressDraft)
+    classifications: ClassificationsDraft = Field(default_factory=ClassificationsDraft)
+    metAt: str | None = None
+    metOn: str | None = None
+    note: str | None = None
 
 
 @asynccontextmanager
@@ -126,6 +184,66 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
     }
 
 
+@app.get("/api/cards/{card_id}")
+async def get_card(card_id: UUID) -> dict[str, Any]:
+    async with database.acquire() as connection:
+        row = await connection.fetchrow(
+            """
+            select
+              id, contact_id, original_filename, mime_type, file_size_bytes, status,
+              created_at, updated_at, error_code, error_message, ocr_text, ocr_metadata,
+              llm_provider, llm_model, extracted_data, extraction_confidence
+            from business_cards
+            where id = $1
+            """,
+            card_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Business card not found")
+
+    metadata = json_object(row["ocr_metadata"])
+    return {
+        "id": str(row["id"]),
+        "contactId": str(row["contact_id"]) if row["contact_id"] else None,
+        "fileName": row["original_filename"],
+        "mimeType": row["mime_type"],
+        "fileSizeBytes": row["file_size_bytes"],
+        "status": row["status"],
+        "createdAt": row["created_at"].isoformat(),
+        "updatedAt": row["updated_at"].isoformat(),
+        "errorCode": row["error_code"],
+        "errorMessage": row["error_message"],
+        "ocrText": row["ocr_text"] or "",
+        "ocrMetadata": metadata,
+        "uploadContext": json_object(metadata.get("uploadContext")),
+        "llmProvider": row["llm_provider"],
+        "llmModel": row["llm_model"],
+        "extractedData": json_object(row["extracted_data"]),
+        "extractionConfidence": float(row["extraction_confidence"]) if row["extraction_confidence"] is not None else None,
+        "fileUrl": f"/api/cards/{card_id}/file",
+    }
+
+
+@app.get("/api/cards/{card_id}/file")
+async def get_card_file(card_id: UUID) -> FileResponse:
+    async with database.acquire() as connection:
+        row = await connection.fetchrow(
+            """
+            select original_filename, storage_path, mime_type
+            from business_cards
+            where id = $1
+            """,
+            card_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Business card not found")
+
+    path = Path(row["storage_path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Stored business card file not found")
+    return FileResponse(path, media_type=row["mime_type"], filename=row["original_filename"])
+
+
 @app.post("/api/cards/upload", status_code=201)
 async def upload_card(
     file: UploadFile = File(...),
@@ -186,6 +304,168 @@ async def upload_card(
         "cardId": str(card_id),
         "status": "pending",
         "fileName": file.filename or safe_name,
+    }
+
+
+@app.post("/api/cards/{card_id}/confirm", status_code=201)
+async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -> dict[str, Any]:
+    display_name = clean_text(payload.name)
+    if not display_name:
+        raise HTTPException(status_code=422, detail="name is required")
+
+    met_on = parse_optional_date(payload.metOn, "metOn")
+    company_name = clean_text(payload.company.name) or clean_text(payload.company.englishName)
+    normalized_company = normalize_lookup(company_name) if company_name else None
+
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            card = await connection.fetchrow(
+                """
+                select id, extracted_data, ocr_metadata
+                from business_cards
+                where id = $1
+                for update
+                """,
+                card_id,
+            )
+            if card is None:
+                raise HTTPException(status_code=404, detail="Business card not found")
+
+            company_id = None
+            if company_name and normalized_company:
+                company_id = await connection.fetchval(
+                    """
+                    insert into companies (name, normalized_name, tax_id, website, industry, metadata)
+                    values ($1, $2, $3, $4, $5, $6::jsonb)
+                    on conflict (normalized_name) do update
+                    set tax_id = coalesce(excluded.tax_id, companies.tax_id),
+                        website = coalesce(excluded.website, companies.website),
+                        industry = coalesce(excluded.industry, companies.industry),
+                        metadata = companies.metadata || excluded.metadata,
+                        updated_at = now()
+                    returning id
+                    """,
+                    company_name,
+                    normalized_company,
+                    clean_text(payload.company.taxId),
+                    clean_text(payload.website),
+                    clean_text(payload.company.industry),
+                    json.dumps({"englishName": clean_text(payload.company.englishName)}, ensure_ascii=False),
+                )
+
+            contact_id = await connection.fetchval(
+                """
+                insert into contacts (
+                  company_id, display_name, title, notes, source_business_card_id, metadata
+                )
+                values ($1, $2, $3, $4, $5, $6::jsonb)
+                returning id
+                """,
+                company_id,
+                display_name,
+                clean_text(payload.title),
+                clean_text(payload.note),
+                card_id,
+                json.dumps(
+                    {
+                        "source": "business_card_review",
+                        "draft": payload.model_dump(mode="json"),
+                    },
+                    ensure_ascii=False,
+                ),
+            )
+
+            methods: list[tuple[str, str]] = []
+            for value in payload.emails:
+                if clean_text(value):
+                    methods.append(("email", clean_text(value) or ""))
+            for value in payload.phones:
+                if clean_text(value):
+                    methods.append(("phone", clean_text(value) or ""))
+            for value in payload.mobiles:
+                if clean_text(value):
+                    methods.append(("mobile", clean_text(value) or ""))
+            for value in payload.fax:
+                if clean_text(value):
+                    methods.append(("other", f"FAX: {clean_text(value)}"))
+            if clean_text(payload.website):
+                methods.append(("website", clean_text(payload.website) or ""))
+
+            for index, (method_type, value) in enumerate(methods):
+                await connection.execute(
+                    """
+                    insert into contact_methods (
+                      contact_id, method_type, value, normalized_value, is_primary
+                    )
+                    values ($1, $2, $3, $4, $5)
+                    """,
+                    contact_id,
+                    method_type,
+                    value,
+                    normalize_lookup(value),
+                    index == 0,
+                )
+
+            if clean_text(payload.address.raw):
+                await connection.execute(
+                    """
+                    insert into addresses (
+                      contact_id, company_id, label, country, city, district, raw_address
+                    )
+                    values ($1, $2, 'business', $3, $4, $5, $6)
+                    """,
+                    contact_id,
+                    company_id,
+                    clean_text(payload.address.country),
+                    clean_text(payload.address.city),
+                    clean_text(payload.address.district),
+                    clean_text(payload.address.raw),
+                )
+
+            if clean_text(payload.metAt) or met_on or clean_text(payload.note):
+                await connection.execute(
+                    """
+                    insert into relationship_notes (
+                      contact_id, business_card_id, met_at, met_on, summary
+                    )
+                    values ($1, $2, $3, $4, $5)
+                    """,
+                    contact_id,
+                    card_id,
+                    clean_text(payload.metAt),
+                    met_on,
+                    clean_text(payload.note),
+                )
+
+            await connection.execute(
+                """
+                update business_cards
+                set contact_id = $2,
+                    status = 'completed',
+                    extracted_data = $3::jsonb,
+                    updated_at = now(),
+                    processed_at = coalesce(processed_at, now())
+                where id = $1
+                """,
+                card_id,
+                contact_id,
+                json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
+            )
+
+            await connection.execute(
+                """
+                insert into audit_logs (action, entity_type, entity_id, after_data, metadata)
+                values ('confirm_card', 'contact', $1, $2::jsonb, $3::jsonb)
+                """,
+                contact_id,
+                json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
+                json.dumps({"businessCardId": str(card_id)}, ensure_ascii=False),
+            )
+
+    return {
+        "contactId": str(contact_id),
+        "cardId": str(card_id),
+        "status": "completed",
     }
 
 

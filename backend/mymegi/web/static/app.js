@@ -1,5 +1,6 @@
 const state = {
   contactsQuery: "",
+  selectedCardId: null,
 };
 
 const formatDate = (value) => {
@@ -34,6 +35,13 @@ const parseDraft = (value) => {
     return {};
   }
 };
+
+const listValue = (value) => (Array.isArray(value) ? value.filter(Boolean).join(", ") : value || "");
+const splitList = (value) =>
+  String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -89,6 +97,9 @@ async function loadCards() {
             <button class="ghost compact" type="button" data-structure-card="${escapeHtml(item.id)}">
               整理
             </button>
+            <button class="ghost compact" type="button" data-review-card="${escapeHtml(item.id)}">
+              審核
+            </button>
           </div>
         </article>
       `;
@@ -119,6 +130,95 @@ async function structureCard(cardId, button) {
     console.error(error);
     await loadCards();
   }
+}
+
+function setReviewState(text) {
+  document.querySelector("#review-state").textContent = text;
+}
+
+function setReviewField(name, value) {
+  const field = document.querySelector(`#review-form [name="${name}"]`);
+  if (field) field.value = value ?? "";
+}
+
+function renderCardPreview(card) {
+  const preview = document.querySelector("#card-preview");
+  if (card.mimeType?.startsWith("image/")) {
+    preview.innerHTML = `<img src="${card.fileUrl}" alt="${escapeHtml(card.fileName)}" />`;
+    return;
+  }
+  if (card.mimeType === "application/pdf") {
+    preview.innerHTML = `<iframe src="${card.fileUrl}" title="${escapeHtml(card.fileName)}"></iframe>`;
+    return;
+  }
+  preview.innerHTML = `<div class="empty">無法預覽此檔案</div>`;
+}
+
+async function reviewCard(cardId) {
+  setReviewState("載入中");
+  const card = await fetchJson(`/api/cards/${cardId}`);
+  const draft = parseDraft(card.extractedData);
+  const context = card.uploadContext || {};
+  state.selectedCardId = card.id;
+
+  document.querySelector("#review-empty").hidden = true;
+  document.querySelector("#review-workbench").hidden = false;
+  document.querySelector("#ocr-text").value = card.ocrText || "";
+  renderCardPreview(card);
+
+  setReviewField("cardId", card.id);
+  setReviewField("name", draft.name);
+  setReviewField("title", draft.title);
+  setReviewField("companyName", draft.company?.name);
+  setReviewField("companyEnglishName", draft.company?.englishName);
+  setReviewField("emails", listValue(draft.emails));
+  setReviewField("mobiles", listValue(draft.mobiles));
+  setReviewField("phones", listValue(draft.phones));
+  setReviewField("fax", listValue(draft.fax));
+  setReviewField("taxId", draft.company?.taxId);
+  setReviewField("industry", draft.company?.industry);
+  setReviewField("addressRaw", draft.address?.raw);
+  setReviewField("country", draft.address?.country);
+  setReviewField("city", draft.address?.city);
+  setReviewField("district", draft.address?.district);
+  setReviewField("metAt", context.metAt);
+  setReviewField("metOn", context.metOn);
+  setReviewField("note", context.note || draft.notes);
+  setReviewState(card.status);
+  document.querySelector("#review").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function reviewPayload(form) {
+  const values = Object.fromEntries(new FormData(form).entries());
+  return {
+    name: values.name,
+    title: values.title || null,
+    company: {
+      name: values.companyName || null,
+      englishName: values.companyEnglishName || null,
+      taxId: values.taxId || null,
+      industry: values.industry || null,
+    },
+    emails: splitList(values.emails),
+    phones: splitList(values.phones),
+    mobiles: splitList(values.mobiles),
+    fax: splitList(values.fax),
+    website: null,
+    address: {
+      raw: values.addressRaw || null,
+      country: values.country || null,
+      city: values.city || null,
+      district: values.district || null,
+    },
+    classifications: {
+      company: [],
+      region: [],
+      industry: values.industry ? [values.industry] : [],
+    },
+    metAt: values.metAt || null,
+    metOn: values.metOn || null,
+    note: values.note || null,
+  };
 }
 
 async function loadContacts() {
@@ -186,6 +286,30 @@ document.querySelector("#cards-list").addEventListener("click", async (event) =>
   const structureButton = event.target.closest("[data-structure-card]");
   if (structureButton) {
     await structureCard(structureButton.dataset.structureCard, structureButton);
+    return;
+  }
+  const reviewButton = event.target.closest("[data-review-card]");
+  if (reviewButton) {
+    await reviewCard(reviewButton.dataset.reviewCard);
+  }
+});
+
+document.querySelector("#review-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const cardId = new FormData(form).get("cardId");
+  setReviewState("儲存中");
+  try {
+    await fetchJson(`/api/cards/${cardId}/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reviewPayload(form)),
+    });
+    setReviewState("已儲存");
+    await refreshAll();
+  } catch (error) {
+    setReviewState("儲存失敗");
+    console.error(error);
   }
 });
 
