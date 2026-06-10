@@ -1,9 +1,13 @@
+import base64
 import json
 import re
 from dataclasses import dataclass
+from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import httpx
+from PIL import Image, ImageOps
 
 from mymegi.config import Settings
 
@@ -23,10 +27,14 @@ class ContactDraftResult:
     source: str
 
 
-SYSTEM_PROMPT = """You extract business card OCR text into clean JSON.
+SYSTEM_PROMPT = """You extract business card data into clean JSON.
 Return only a JSON object. Do not include markdown.
 Preserve Traditional Chinese when present.
 If a field is unknown, use null or an empty array.
+Prefer text that is clearly visible on the business card image over noisy OCR text.
+Do not invent a person's name from unrelated OCR fragments.
+For Taiwan business cards, treat labels like 電話/TEL/手機/機/E-mail/統編/地址 as contact fields.
+For universities or schools, put the school name in company.name and the department or role in notes if it is not a title.
 """
 
 
@@ -139,9 +147,41 @@ def extract_json_object(text: str) -> dict[str, Any]:
     return value
 
 
-async def generate_contact_draft_with_llm(ocr_text: str, settings: Settings) -> ContactDraftResult:
+def encode_image_data_url(image_path: Path, mime_type: str, rotation: int = 0) -> str | None:
+    if not mime_type.startswith("image/") or not image_path.exists():
+        return None
+
+    with Image.open(image_path) as image:
+        image = ImageOps.exif_transpose(image)
+        if rotation:
+            image = image.rotate(rotation, expand=True)
+        image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
+        if image.mode not in {"RGB", "L"}:
+            image = image.convert("RGB")
+        output = BytesIO()
+        image.save(output, format="JPEG", quality=86, optimize=True)
+    encoded = base64.b64encode(output.getvalue()).decode("ascii")
+    return f"data:image/jpeg;base64,{encoded}"
+
+
+def build_user_prompt(ocr_text: str, has_image: bool) -> str:
+    image_instruction = (
+        "An image of the business card is attached. Use it to resolve OCR mistakes, "
+        "rotated text, Chinese names, and field labels."
+        if has_image
+        else "Only OCR text is available. Be conservative when OCR text is noisy."
+    )
     prompt = f"""
-Extract this business card OCR text into the exact JSON shape below.
+Extract this business card into the exact JSON shape below.
+{image_instruction}
+
+Important extraction rules:
+- Keep Traditional Chinese names, organization names, addresses, and titles exactly as seen.
+- If both Chinese and English organization names are visible, put Chinese in company.name and English in company.englishName.
+- A Taiwanese 統一編號/統編 is company.taxId.
+- Put landline numbers under phones, mobile numbers beginning with 09 or +886-9 under mobiles, and fax under fax.
+- Use notes for department names, extension numbers, or relationship-relevant visible context that does not fit another field.
+- Suggest classifications.region from visible country/city/district and classifications.industry from the organization type.
 
 JSON shape:
 {json.dumps(contact_schema_template(), ensure_ascii=False)}
@@ -149,12 +189,37 @@ JSON shape:
 OCR text:
 {ocr_text}
 """
+    return prompt
+
+
+async def generate_contact_draft_with_llm(
+    ocr_text: str,
+    settings: Settings,
+    image_path: Path | None = None,
+    image_mime_type: str | None = None,
+    image_rotation: int = 0,
+) -> ContactDraftResult:
+    image_data_url = None
+    if image_path and image_mime_type:
+        image_data_url = encode_image_data_url(image_path, image_mime_type, image_rotation)
+
+    prompt = build_user_prompt(ocr_text, image_data_url is not None)
+    user_content: str | list[dict[str, Any]]
+    input_mode = "vision" if image_data_url else "ocr_text"
+    if image_data_url:
+        user_content = [
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": image_data_url}},
+        ]
+    else:
+        user_content = prompt
+
     url = f"{settings.openai_base_url.rstrip('/')}/chat/completions"
     payload = {
         "model": settings.llm_model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": user_content},
         ],
         "temperature": 0,
         "response_format": {"type": "json_object"},
@@ -173,6 +238,7 @@ OCR text:
         ) from exc
 
     raw = response.json()
+    raw["mymegiInputMode"] = input_mode
     content = raw.get("choices", [{}])[0].get("message", {}).get("content")
     if not isinstance(content, str):
         raise LlmError("LLM_EMPTY_RESPONSE", "LLM response did not contain message content.", raw)
@@ -186,7 +252,7 @@ OCR text:
             {"content": content, "error": str(exc)},
         ) from exc
 
-    return ContactDraftResult(data=data, raw_output=raw, source="llm")
+    return ContactDraftResult(data=data, raw_output=raw, source="llm_vision" if image_data_url else "llm")
 
 
 def first_match(pattern: str, text: str, flags: int = re.IGNORECASE) -> str | None:
@@ -272,16 +338,44 @@ def fallback_contact_draft(ocr_text: str) -> ContactDraftResult:
     )
 
 
-async def generate_contact_draft(ocr_text: str, settings: Settings) -> ContactDraftResult:
+async def generate_contact_draft(
+    ocr_text: str,
+    settings: Settings,
+    image_path: Path | None = None,
+    image_mime_type: str | None = None,
+    image_rotation: int = 0,
+) -> ContactDraftResult:
+    vision_error: LlmError | None = None
+    if image_path and image_mime_type and image_mime_type.startswith("image/"):
+        try:
+            return await generate_contact_draft_with_llm(
+                ocr_text,
+                settings,
+                image_path=image_path,
+                image_mime_type=image_mime_type,
+                image_rotation=image_rotation,
+            )
+        except LlmError as exc:
+            vision_error = exc
+
     try:
         return await generate_contact_draft_with_llm(ocr_text, settings)
     except LlmError as exc:
         fallback = fallback_contact_draft(ocr_text)
+        llm_errors: dict[str, Any] = {
+            "text": {"code": exc.code, "message": exc.message, "metadata": exc.metadata}
+        }
+        if vision_error:
+            llm_errors["vision"] = {
+                "code": vision_error.code,
+                "message": vision_error.message,
+                "metadata": vision_error.metadata,
+            }
         return ContactDraftResult(
             data=fallback.data,
             raw_output={
                 "source": "fallback_parser",
-                "llmError": {"code": exc.code, "message": exc.message, "metadata": exc.metadata},
+                "llmErrors": llm_errors,
                 "fallback": fallback.raw_output,
             },
             source="fallback_parser",

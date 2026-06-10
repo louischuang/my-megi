@@ -84,10 +84,13 @@
 - [x] 設計 extraction prompt。
 - [x] 建立 JSON schema 驗證。
 - [x] 實作解析結果重試與錯誤處理。
+- [x] 支援 vision-capable Ollama model 使用名片圖片 + OCR 文字抽取資料。
+- [x] vision 失敗時退回純 OCR 文字抽取。
 
 驗證方式：
 
 - OCR 文字可轉成結構化 contact draft。
+- 支援 vision 的模型可回傳 `source: llm_vision` 的待審核草稿。
 - 非 JSON 或 schema 不合格輸出會被攔截。
 
 ## Phase 6: 人工確認 UI

@@ -32,8 +32,8 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 
 1. 使用者上傳名片檔案。
 2. 系統儲存原始檔案並建立匯入任務。
-3. OCR 擷取文字；若是圖片也可交給支援 vision 的本地 LLM。
-4. LLM 將 OCR 文字轉成結構化 JSON。
+3. OCR 擷取文字並判斷較合適的名片方向。
+4. 若本地 LLM 支援 vision，LLM 會同時使用轉正後圖片與 OCR 文字產生結構化 JSON；否則退回純 OCR 文字模式。
 5. 系統做欄位驗證、信心分數、重複資料檢查。
 6. 使用者在 Web UI 確認或修正。
 7. 寫入聯絡人、公司、地區、產業、互動紀錄等資料表。
@@ -68,7 +68,7 @@ DATABASE_URL=postgres://mymegi:mymegi@db:5432/mymegi
 UPLOAD_DIR=/data/uploads
 OPENAI_BASE_URL=http://ollama:11434/v1
 OPENAI_API_KEY=ollama
-LLM_MODEL=llava:latest
+LLM_MODEL=gemma4:e4b
 OCR_ENGINE=tesseract
 APP_ENV=local
 ```
@@ -90,7 +90,7 @@ LLM_MODEL=gemma4:e4b
 
 目前主機 Ollama models：
 
-- `gemma4:e4b`: 目標預設模型，支援 OpenAI-compatible API；需先在本機 Ollama 下載完成。
+- `gemma4:e4b`: 目標預設模型，支援 OpenAI-compatible API 與 vision；需先在本機 Ollama 下載完成。
 - `gemma4:26b`: 可作為較慢的備援文字模型。
 - `gemma3:27b`
 - `gemma3:12b`
@@ -130,7 +130,8 @@ API 會以 OpenAPI/Swagger 文件公開，初期端點包含：
 
 - `POST /api/cards/upload`: 上傳名片。
 - `GET /api/cards/{id}`: 取得名片處理結果。
-- `POST /api/cards/{id}/extract`: 重新 OCR/LLM 擷取。
+- `POST /api/cards/{id}/extract`: 重新執行 OCR。
+- `POST /api/cards/{id}/structure`: 使用 OCR 文字與可用時的圖片 vision 重新產生待審核草稿。
 - `POST /api/contacts`: 建立聯絡人。
 - `GET /api/contacts`: 搜尋聯絡人。
 - `GET /api/contacts/{id}`: 取得聯絡人詳情。
@@ -155,6 +156,7 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 
 - OCR 無法保證 100% 正確，尤其是低解析度、反光、特殊字體、直式排版、雙語混排名片。
 - 本地 LLM 的結構化輸出是機率型結果，必須做 JSON schema 驗證與人工確認。
+- Vision LLM 能改善 OCR 漏字與旋轉問題，但中文姓名、特殊字體與低清晰度照片仍可能需要人工修正。
 - 產業別分類需要先定義分類法；若沒有分類表，LLM 只能推測，結果可能不一致。
 - 地區分類若要準確，應導入地址標準化或行政區資料表。
 - Ollama 的 vision 能力取決於安裝模型；不是所有 Ollama 模型都能讀圖。

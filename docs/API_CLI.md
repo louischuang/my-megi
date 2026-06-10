@@ -122,14 +122,33 @@ Response `200`: Business Card resource.
 
 `POST /api/cards/{cardId}/extract`
 
-Purpose: rerun OCR and LLM extraction.
+Purpose: rerun local OCR and refresh stored OCR text/metadata.
 
-Response `202`:
+Response `200`:
 
 ```json
 {
   "cardId": "card_123",
-  "status": "processing"
+  "status": "completed",
+  "ocrText": "Alice Chen...",
+  "metadata": {}
+}
+```
+
+### Structure Card
+
+`POST /api/cards/{cardId}/structure`
+
+Purpose: generate a reviewable contact draft from OCR text and, when the configured model supports it, the stored card image.
+
+Response `200`:
+
+```json
+{
+  "cardId": "card_123",
+  "status": "needs_review",
+  "source": "llm_vision",
+  "draft": {}
 }
 ```
 
@@ -290,4 +309,3 @@ mymegi notes add contact_123 \
 - Pagination consistency。
 - Backup and restore guide。
 - Data export endpoint。
-

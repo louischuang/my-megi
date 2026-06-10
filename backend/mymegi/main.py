@@ -387,7 +387,7 @@ async def run_card_structure(card_id: UUID) -> dict[str, Any]:
     async with database.acquire() as connection:
         card = await connection.fetchrow(
             """
-            select id, ocr_text
+            select id, ocr_text, storage_path, mime_type, ocr_metadata
             from business_cards
             where id = $1
             """,
@@ -398,7 +398,13 @@ async def run_card_structure(card_id: UUID) -> dict[str, Any]:
         if not card["ocr_text"]:
             raise HTTPException(status_code=409, detail="Business card has no OCR text")
 
-    result = await generate_contact_draft(card["ocr_text"], settings)
+    result = await generate_contact_draft(
+        card["ocr_text"],
+        settings,
+        image_path=Path(card["storage_path"]),
+        image_mime_type=card["mime_type"],
+        image_rotation=selected_rotation(json_object(card["ocr_metadata"])),
+    )
     async with database.acquire() as connection:
         await connection.execute(
             """
