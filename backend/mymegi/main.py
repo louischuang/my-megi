@@ -88,6 +88,7 @@ class CompanyDraft(BaseModel):
 
 class AddressDraft(BaseModel):
     raw: str | None = None
+    englishRaw: str | None = None
     country: str | None = None
     city: str | None = None
     district: str | None = None
@@ -101,6 +102,7 @@ class ClassificationsDraft(BaseModel):
 
 class ConfirmCardRequest(BaseModel):
     name: str
+    englishName: str | None = None
     title: str | None = None
     company: CompanyDraft = Field(default_factory=CompanyDraft)
     emails: list[str] = Field(default_factory=list)
@@ -508,7 +510,9 @@ def contact_filter_conditions(
             f"""
           (
             c.display_name ilike ${search_param}
+            or coalesce(c.english_name, '') ilike ${search_param}
             or coalesce(comp.name, '') ilike ${search_param}
+            or coalesce(comp.english_name, '') ilike ${search_param}
             or exists (
               select 1 from contact_methods cm
               where cm.contact_id = c.id and cm.value ilike ${search_param}
@@ -645,10 +649,13 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
             if company_name and normalized_company:
                 company_id = await connection.fetchval(
                     """
-                    insert into companies (name, normalized_name, tax_id, website, industry, metadata)
-                    values ($1, $2, $3, $4, $5, $6::jsonb)
+                    insert into companies (
+                      name, normalized_name, english_name, tax_id, website, industry, metadata
+                    )
+                    values ($1, $2, $3, $4, $5, $6, $7::jsonb)
                     on conflict (normalized_name) do update
                     set tax_id = coalesce(excluded.tax_id, companies.tax_id),
+                        english_name = coalesce(excluded.english_name, companies.english_name),
                         website = coalesce(excluded.website, companies.website),
                         industry = coalesce(excluded.industry, companies.industry),
                         metadata = companies.metadata || excluded.metadata,
@@ -657,6 +664,7 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                     """,
                     company_name,
                     normalized_company,
+                    clean_text(payload.company.englishName),
                     clean_text(payload.company.taxId),
                     clean_text(payload.website),
                     clean_text(payload.company.industry),
@@ -665,14 +673,15 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
 
             contact_id = await connection.fetchval(
                 """
-                insert into contacts (
-                  company_id, display_name, title, notes, source_business_card_id, metadata
+                    insert into contacts (
+                  company_id, display_name, english_name, title, notes, source_business_card_id, metadata
                 )
-                values ($1, $2, $3, $4, $5, $6::jsonb)
+                values ($1, $2, $3, $4, $5, $6, $7::jsonb)
                 returning id
                 """,
                 company_id,
                 display_name,
+                clean_text(payload.englishName),
                 clean_text(payload.title),
                 clean_text(payload.note),
                 card_id,
@@ -716,20 +725,21 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                     index == 0,
                 )
 
-            if clean_text(payload.address.raw):
+            if clean_text(payload.address.raw) or clean_text(payload.address.englishRaw):
                 await connection.execute(
                     """
                     insert into addresses (
-                      contact_id, company_id, label, country, city, district, raw_address
+                      contact_id, company_id, label, country, city, district, raw_address, english_address
                     )
-                    values ($1, $2, 'business', $3, $4, $5, $6)
+                    values ($1, $2, 'business', $3, $4, $5, $6, $7)
                     """,
                     contact_id,
                     company_id,
                     clean_text(payload.address.country),
                     clean_text(payload.address.city),
                     clean_text(payload.address.district),
-                    clean_text(payload.address.raw),
+                    clean_text(payload.address.raw) or clean_text(payload.address.englishRaw) or "",
+                    clean_text(payload.address.englishRaw),
                 )
 
             if clean_text(payload.metAt) or met_on or clean_text(payload.note):
@@ -833,9 +843,11 @@ async def list_contacts(
             select
               c.id,
               c.display_name,
+              c.english_name,
               c.title,
               c.created_at,
               comp.name as company_name,
+              comp.english_name as company_english_name,
               coalesce(
                 (
                   select jsonb_object_agg(grouped.code, grouped.names)
@@ -873,8 +885,10 @@ async def list_contacts(
             {
                 "id": str(row["id"]),
                 "name": row["display_name"],
+                "englishName": row["english_name"],
                 "title": row["title"],
                 "company": row["company_name"],
+                "companyEnglishName": row["company_english_name"],
                 "classifications": json_object(row["classifications"]),
                 "createdAt": row["created_at"].isoformat(),
             }

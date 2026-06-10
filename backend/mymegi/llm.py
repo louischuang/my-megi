@@ -41,6 +41,7 @@ For universities or schools, put the school name in company.name and the departm
 def contact_schema_template() -> dict[str, Any]:
     return {
         "name": None,
+        "englishName": None,
         "title": None,
         "company": {
             "name": None,
@@ -55,6 +56,7 @@ def contact_schema_template() -> dict[str, Any]:
         "website": None,
         "address": {
             "raw": None,
+            "englishRaw": None,
             "country": None,
             "city": None,
             "district": None,
@@ -177,7 +179,9 @@ Extract this business card into the exact JSON shape below.
 
 Important extraction rules:
 - Keep Traditional Chinese names, organization names, addresses, and titles exactly as seen.
+- If both Chinese and English person names are visible, put Chinese in name and English in englishName.
 - If both Chinese and English organization names are visible, put Chinese in company.name and English in company.englishName.
+- If both Chinese and English addresses are visible, put Chinese in address.raw and English in address.englishRaw.
 - A Taiwanese 統一編號/統編 is company.taxId.
 - Put landline numbers under phones, mobile numbers beginning with 09 or +886-9 under mobiles, and fax under fax.
 - Use notes for department names, extension numbers, or relationship-relevant visible context that does not fit another field.
@@ -319,6 +323,7 @@ def fallback_contact_draft(ocr_text: str) -> ContactDraftResult:
             "fax": [fax] if fax else [],
             "address": {
                 "raw": address_raw,
+                "englishRaw": address_raw if address_raw and re.search(r"[A-Za-z]", address_raw) else None,
                 "country": "Taiwan" if "Taiwan" in text or "台" in text else None,
                 "city": "Taipei" if "Taipei" in text or "台北" in text else None,
                 "district": "松山區" if "松山" in text else None,

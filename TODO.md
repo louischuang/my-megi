@@ -38,6 +38,7 @@
 - [x] 建立 `relationship_notes`、`classification_types`、`classifications`、`contact_classifications`。
 - [x] 建立 `tags`、`contact_tags`、`audit_logs`。
 - [x] 建立 `jsonb` 欄位保存 OCR/LLM 原始輸出、抽取結果與 metadata。
+- [x] 延伸中文/英文姓名、公司名稱與地址欄位，避免 OCR/LLM 語言混淆時遺失資料。
 - [x] 建立 email、電話、姓名、公司、分類、建立時間索引。
 - [ ] 建立 seed 或 sample data。
 - [ ] 建立 contact/company/card/note/classification 基本 CRUD。

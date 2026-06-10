@@ -99,15 +99,19 @@
             <input name="cardId" type="hidden" />
             <div class="field-grid">
               <label>
-                <span>姓名</span>
+                <span>姓名中文</span>
                 <input name="name" type="text" required />
               </label>
+              <label>
+                <span>姓名英文</span>
+                <input name="englishName" type="text" />
+              </label>
+            </div>
+            <div class="field-grid">
               <label>
                 <span>職稱</span>
                 <input name="title" type="text" />
               </label>
-            </div>
-            <div class="field-grid">
               <label>
                 <span>公司中文</span>
                 <input name="companyName" type="text" />
@@ -146,8 +150,12 @@
               </label>
             </div>
             <label>
-              <span>地址</span>
+              <span>地址中文</span>
               <input name="addressRaw" type="text" />
+            </label>
+            <label>
+              <span>地址英文</span>
+              <input name="addressEnglishRaw" type="text" />
             </label>
             <div class="field-grid three">
               <label>

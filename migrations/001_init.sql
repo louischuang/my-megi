@@ -9,6 +9,7 @@ create table companies (
   website text,
   industry text,
   company_type text,
+  english_name text,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -21,6 +22,7 @@ create table contacts (
   id uuid primary key default gen_random_uuid(),
   company_id uuid references companies(id) on delete set null,
   display_name text not null,
+  english_name text,
   given_name text,
   family_name text,
   nickname text,
@@ -106,6 +108,7 @@ create table addresses (
   district text,
   postal_code text,
   raw_address text not null,
+  english_address text,
   normalized_address text,
   latitude numeric(10, 7),
   longitude numeric(10, 7),
@@ -215,4 +218,3 @@ create table audit_logs (
 
 create index audit_logs_entity_idx on audit_logs (entity_type, entity_id);
 create index audit_logs_created_at_idx on audit_logs (created_at desc);
-

@@ -179,6 +179,7 @@ async function reviewCard(cardId) {
 
   setReviewField("cardId", card.id);
   setReviewField("name", draft.name);
+  setReviewField("englishName", draft.englishName);
   setReviewField("title", draft.title);
   setReviewField("companyName", draft.company?.name);
   setReviewField("companyEnglishName", draft.company?.englishName);
@@ -189,6 +190,7 @@ async function reviewCard(cardId) {
   setReviewField("taxId", draft.company?.taxId);
   setReviewField("industry", draft.company?.industry);
   setReviewField("addressRaw", draft.address?.raw);
+  setReviewField("addressEnglishRaw", draft.address?.englishRaw);
   setReviewField("country", draft.address?.country);
   setReviewField("city", draft.address?.city);
   setReviewField("district", draft.address?.district);
@@ -209,6 +211,7 @@ function reviewPayload(form) {
   const values = Object.fromEntries(new FormData(form).entries());
   return {
     name: values.name,
+    englishName: values.englishName || null,
     title: values.title || null,
     company: {
       name: values.companyName || null,
@@ -223,6 +226,7 @@ function reviewPayload(form) {
     website: null,
     address: {
       raw: values.addressRaw || null,
+      englishRaw: values.addressEnglishRaw || null,
       country: values.country || null,
       city: values.city || null,
       district: values.district || null,

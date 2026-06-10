@@ -44,6 +44,7 @@ create table companies (
   website text,
   industry text,
   company_type text,
+  english_name text,
   metadata jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -51,6 +52,7 @@ create table companies (
 
 create unique index companies_normalized_name_idx on companies (normalized_name);
 create index companies_industry_idx on companies (industry);
+create index companies_english_name_idx on companies (english_name);
 ```
 
 ### contacts
@@ -60,6 +62,7 @@ create table contacts (
   id uuid primary key default gen_random_uuid(),
   company_id uuid references companies(id) on delete set null,
   display_name text not null,
+  english_name text,
   given_name text,
   family_name text,
   nickname text,
@@ -75,6 +78,7 @@ create table contacts (
 );
 
 create index contacts_display_name_idx on contacts (display_name);
+create index contacts_english_name_idx on contacts (english_name);
 create index contacts_company_id_idx on contacts (company_id);
 create index contacts_created_at_idx on contacts (created_at desc);
 create index contacts_metadata_gin_idx on contacts using gin (metadata);
@@ -159,6 +163,7 @@ create table addresses (
   district text,
   postal_code text,
   raw_address text not null,
+  english_address text,
   normalized_address text,
   latitude numeric(10, 7),
   longitude numeric(10, 7),
@@ -347,4 +352,3 @@ MVP 重複資料判斷順序：
 10. tags and contact_tags。
 11. audit_logs。
 12. indexes and seed data。
-

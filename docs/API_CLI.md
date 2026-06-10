@@ -54,19 +54,22 @@ Allowed status values:
 ```json
 {
   "id": "contact_123",
-  "name": "Alice Chen",
+  "name": "陳艾莉",
+  "englishName": "Alice Chen",
   "title": "Business Development Manager",
   "emails": ["alice@example.com"],
   "phones": ["+886-912-345-678"],
   "company": {
     "id": "company_123",
-    "name": "Example Inc",
+    "name": "範例股份有限公司",
+    "englishName": "Example Inc",
     "industry": "AI Software"
   },
   "address": {
     "country": "Taiwan",
     "city": "Taipei",
-    "raw": "台北市..."
+    "raw": "台北市...",
+    "englishRaw": "No. 1, Example Rd., Taipei, Taiwan"
   },
   "tags": ["expo", "partner"],
   "createdAt": "2026-06-09T12:00:00+08:00",
@@ -148,7 +151,18 @@ Response `200`:
   "cardId": "card_123",
   "status": "needs_review",
   "source": "llm_vision",
-  "draft": {}
+  "draft": {
+    "name": "陳艾莉",
+    "englishName": "Alice Chen",
+    "company": {
+      "name": "範例股份有限公司",
+      "englishName": "Example Inc"
+    },
+    "address": {
+      "raw": "台北市...",
+      "englishRaw": "No. 1, Example Rd., Taipei, Taiwan"
+    }
+  }
 }
 ```
 
@@ -161,15 +175,18 @@ Request:
 ```json
 {
   "sourceCardId": "card_123",
-  "name": "Alice Chen",
+  "name": "陳艾莉",
+  "englishName": "Alice Chen",
   "title": "Business Development Manager",
   "emails": ["alice@example.com"],
   "phones": ["+886-912-345-678"],
-  "companyName": "Example Inc",
+  "companyName": "範例股份有限公司",
+  "companyEnglishName": "Example Inc",
   "industry": "AI Software",
   "country": "Taiwan",
   "city": "Taipei",
   "addressRaw": "台北市...",
+  "addressEnglishRaw": "No. 1, Example Rd., Taipei, Taiwan",
   "relationshipNote": {
     "metAt": "2026 Taipei Expo",
     "metOn": "2026-06-09",
