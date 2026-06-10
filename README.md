@@ -78,19 +78,20 @@ APP_ENV=local
 ```env
 OPENAI_BASE_URL=http://localhost:11434/v1
 OPENAI_API_KEY=ollama
-LLM_MODEL=gemma4:26b
+LLM_MODEL=gemma4:e4b
 ```
 
 Docker container 內需要透過 Docker Desktop 的 host gateway 存取主機 Ollama，因此 `docker-compose.yml` 會使用：
 
 ```env
 OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-LLM_MODEL=gemma4:26b
+LLM_MODEL=gemma4:e4b
 ```
 
 目前主機 Ollama models：
 
-- `gemma4:26b`: 目前預設模型，支援 OpenAI-compatible API 與 vision/completion。
+- `gemma4:e4b`: 目標預設模型，支援 OpenAI-compatible API；需先在本機 Ollama 下載完成。
+- `gemma4:26b`: 可作為較慢的備援文字模型。
 - `gemma3:27b`
 - `gemma3:12b`
 
