@@ -144,7 +144,7 @@ function setReviewField(name, value) {
 function renderCardPreview(card) {
   const preview = document.querySelector("#card-preview");
   if (card.mimeType?.startsWith("image/")) {
-    preview.innerHTML = `<img src="${card.fileUrl}" alt="${escapeHtml(card.fileName)}" />`;
+    preview.innerHTML = `<img src="${card.previewUrl || card.fileUrl}" alt="${escapeHtml(card.fileName)}" />`;
     return;
   }
   if (card.mimeType === "application/pdf") {
@@ -259,16 +259,19 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
   event.preventDefault();
   const form = event.currentTarget;
   const status = document.querySelector("#upload-state");
-  status.textContent = "上傳中";
+  status.textContent = "上傳與辨識中";
   try {
-    await fetchJson("/api/cards/upload", {
+    const result = await fetchJson("/api/cards/upload", {
       method: "POST",
       body: new FormData(form),
     });
     form.reset();
     document.querySelector("#file-meta").textContent = "JPG、PNG、WEBP、PDF，最大 20MB";
-    status.textContent = "完成";
+    status.textContent = result.status === "needs_review" ? "待審核" : result.status;
     await refreshAll();
+    if (result.cardId) {
+      await reviewCard(result.cardId);
+    }
   } catch (error) {
     status.textContent = "失敗";
     console.error(error);

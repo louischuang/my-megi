@@ -73,22 +73,26 @@ OCR_ENGINE=tesseract
 APP_ENV=local
 ```
 
-目前本地測試使用外部 Ollama 主機：
+目前本地測試使用主機上的 Ollama：
 
 ```env
-OPENAI_BASE_URL=http://192.168.150.221:11434/v1
+OPENAI_BASE_URL=http://localhost:11434/v1
 OPENAI_API_KEY=ollama
-LLM_MODEL=gemma4:e4b
+LLM_MODEL=gemma4:26b
 ```
 
-已掃描到的 Ollama models：
+Docker container 內需要透過 Docker Desktop 的 host gateway 存取主機 Ollama，因此 `docker-compose.yml` 會使用：
 
-- `gemma4:e4b`: 已實測 OpenAI-compatible chat completions，可穩定回傳 JSON，作為目前預設模型。
-- `gemma4:26b`: 支援 vision/completion，但本次簡短 JSON 測試超過合理等待時間，暫不作為互動式預設。
-- `llava:latest`: 支援 vision，可保留作為圖片直接辨識候選。
-- `Qwen3.6:35b-a3b`
-- `qwen3.5:27b`
-- `lfm2:latest`
+```env
+OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MODEL=gemma4:26b
+```
+
+目前主機 Ollama models：
+
+- `gemma4:26b`: 目前預設模型，支援 OpenAI-compatible API 與 vision/completion。
+- `gemma3:27b`
+- `gemma3:12b`
 
 ## 本地開發
 

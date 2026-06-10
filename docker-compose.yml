@@ -7,8 +7,8 @@ services:
     environment:
       DATABASE_URL: postgresql://mymegi:mymegi@db:5432/mymegi
       UPLOAD_DIR: /data/uploads
-      OPENAI_BASE_URL: http://192.168.150.221:11434/v1
-      LLM_MODEL: gemma4:e4b
+      OPENAI_BASE_URL: http://host.docker.internal:11434/v1
+      LLM_MODEL: gemma4:26b
     ports:
       - "${APP_PORT:-8000}:8000"
     volumes:

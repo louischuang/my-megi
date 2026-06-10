@@ -57,7 +57,7 @@
 - [x] 原始檔保存到 volume。
 - [x] 建立 business card import record。
 - [x] 建立 OCR import action。
-- [ ] 建立 LLM import job。
+- [x] 建立 LLM import job。
 
 驗證方式：
 

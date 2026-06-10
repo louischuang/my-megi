@@ -8,14 +8,14 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from mymegi.config import get_settings
 from mymegi.db import database
 from mymegi.llm import generate_contact_draft
-from mymegi.ocr import OcrError, run_tesseract_ocr
+from mymegi.ocr import OcrError, render_oriented_preview, run_tesseract_ocr
 
 
 APP_DIR = Path(__file__).resolve().parent
@@ -53,6 +53,16 @@ def parse_optional_date(value: str | None, field_name: str) -> date | None:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=f"{field_name} must be YYYY-MM-DD") from exc
+
+
+def selected_rotation(metadata: dict[str, Any]) -> int:
+    last_run = json_object(metadata.get("lastOcrRun"))
+    rotation = last_run.get("selectedPreviewRotation", last_run.get("selectedRotation", 0))
+    try:
+        rotation = int(rotation)
+    except (TypeError, ValueError):
+        return 0
+    return rotation if rotation in {0, 90, 180, 270} else 0
 
 
 class CompanyDraft(BaseModel):
@@ -221,6 +231,7 @@ async def get_card(card_id: UUID) -> dict[str, Any]:
         "extractedData": json_object(row["extracted_data"]),
         "extractionConfidence": float(row["extraction_confidence"]) if row["extraction_confidence"] is not None else None,
         "fileUrl": f"/api/cards/{card_id}/file",
+        "previewUrl": f"/api/cards/{card_id}/preview",
     }
 
 
@@ -242,6 +253,176 @@ async def get_card_file(card_id: UUID) -> FileResponse:
     if not path.exists():
         raise HTTPException(status_code=404, detail="Stored business card file not found")
     return FileResponse(path, media_type=row["mime_type"], filename=row["original_filename"])
+
+
+@app.get("/api/cards/{card_id}/preview", response_model=None)
+async def get_card_preview(card_id: UUID):
+    async with database.acquire() as connection:
+        row = await connection.fetchrow(
+            """
+            select original_filename, storage_path, mime_type, ocr_metadata
+            from business_cards
+            where id = $1
+            """,
+            card_id,
+        )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Business card not found")
+
+    path = Path(row["storage_path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Stored business card file not found")
+    if not row["mime_type"].startswith("image/"):
+        return FileResponse(path, media_type=row["mime_type"], filename=row["original_filename"])
+
+    try:
+        preview = await asyncio.to_thread(
+            render_oriented_preview,
+            path,
+            selected_rotation(json_object(row["ocr_metadata"])),
+        )
+    except OSError as exc:
+        raise HTTPException(status_code=422, detail="Unable to render image preview") from exc
+    return Response(content=preview, media_type="image/jpeg")
+
+
+async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
+    settings = get_settings()
+    async with database.acquire() as connection:
+        card = await connection.fetchrow(
+            """
+            select id, storage_path, mime_type
+            from business_cards
+            where id = $1
+            """,
+            card_id,
+        )
+        if card is None:
+            raise HTTPException(status_code=404, detail="Business card not found")
+
+        await connection.execute(
+            """
+            update business_cards
+            set status = 'processing',
+                error_code = null,
+                error_message = null,
+                updated_at = now()
+            where id = $1
+            """,
+            card_id,
+        )
+
+    try:
+        result = await asyncio.to_thread(
+            run_tesseract_ocr,
+            Path(card["storage_path"]),
+            card["mime_type"],
+        )
+    except OcrError as exc:
+        async with database.acquire() as connection:
+            await connection.execute(
+                """
+                update business_cards
+                set status = 'failed',
+                    error_code = $2,
+                    error_message = $3,
+                    ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $4::jsonb,
+                    updated_at = now(),
+                    processed_at = now()
+                where id = $1
+                """,
+                card_id,
+                exc.code,
+                exc.message,
+                json.dumps({"lastOcrError": exc.metadata}),
+            )
+        raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message})
+
+    status = "completed" if result.text else "needs_review"
+    async with database.acquire() as connection:
+        await connection.execute(
+            """
+            update business_cards
+            set status = $2,
+                ocr_engine = $3,
+                ocr_text = $4,
+                ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $5::jsonb,
+                error_code = null,
+                error_message = null,
+                updated_at = now(),
+                processed_at = now()
+            where id = $1
+            """,
+            card_id,
+            status,
+            settings.ocr_engine,
+            result.text,
+            json.dumps({"lastOcrRun": result.metadata}),
+        )
+
+    return {
+        "cardId": str(card_id),
+        "status": status,
+        "ocrText": result.text,
+        "metadata": result.metadata,
+    }
+
+
+async def run_card_structure(card_id: UUID) -> dict[str, Any]:
+    settings = get_settings()
+    async with database.acquire() as connection:
+        card = await connection.fetchrow(
+            """
+            select id, ocr_text
+            from business_cards
+            where id = $1
+            """,
+            card_id,
+        )
+        if card is None:
+            raise HTTPException(status_code=404, detail="Business card not found")
+        if not card["ocr_text"]:
+            raise HTTPException(status_code=409, detail="Business card has no OCR text")
+
+    result = await generate_contact_draft(card["ocr_text"], settings)
+    async with database.acquire() as connection:
+        await connection.execute(
+            """
+            update business_cards
+            set status = 'needs_review',
+                llm_provider = $2,
+                llm_model = $3,
+                llm_raw_output = $4::jsonb,
+                extracted_data = $5::jsonb,
+                updated_at = now()
+            where id = $1
+            """,
+            card_id,
+            result.source,
+            settings.llm_model,
+            json.dumps(result.raw_output, ensure_ascii=False),
+            json.dumps(result.data, ensure_ascii=False),
+        )
+
+    return {
+        "cardId": str(card_id),
+        "status": "needs_review",
+        "source": result.source,
+        "draft": result.data,
+    }
+
+
+async def process_card_for_review(card_id: UUID) -> dict[str, Any]:
+    ocr_result = await run_card_ocr(card_id)
+    if not ocr_result["ocrText"]:
+        return ocr_result
+    structure_result = await run_card_structure(card_id)
+    return {
+        "cardId": str(card_id),
+        "status": structure_result["status"],
+        "ocr": ocr_result,
+        "structure": structure_result,
+    }
 
 
 @app.post("/api/cards/upload", status_code=201)
@@ -300,10 +481,22 @@ async def upload_card(
             json.dumps({"uploadContext": upload_context}),
         )
 
+    try:
+        process_result = await process_card_for_review(card_id)
+        status = process_result["status"]
+        processing_error = None
+    except HTTPException as exc:
+        status = "failed"
+        process_result = None
+        processing_error = exc.detail
+
     return {
         "cardId": str(card_id),
-        "status": "pending",
+        "status": status,
         "fileName": file.filename or safe_name,
+        "autoProcessed": process_result is not None,
+        "processing": process_result,
+        "processingError": processing_error,
     }
 
 
@@ -471,130 +664,12 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
 
 @app.post("/api/cards/{card_id}/extract")
 async def extract_card(card_id: UUID) -> dict[str, Any]:
-    settings = get_settings()
-    async with database.acquire() as connection:
-        card = await connection.fetchrow(
-            """
-            select id, storage_path, mime_type
-            from business_cards
-            where id = $1
-            """,
-            card_id,
-        )
-        if card is None:
-            raise HTTPException(status_code=404, detail="Business card not found")
-
-        await connection.execute(
-            """
-            update business_cards
-            set status = 'processing',
-                error_code = null,
-                error_message = null,
-                updated_at = now()
-            where id = $1
-            """,
-            card_id,
-        )
-
-    try:
-        result = await asyncio.to_thread(
-            run_tesseract_ocr,
-            Path(card["storage_path"]),
-            card["mime_type"],
-        )
-    except OcrError as exc:
-        async with database.acquire() as connection:
-            await connection.execute(
-                """
-                update business_cards
-                set status = 'failed',
-                    error_code = $2,
-                    error_message = $3,
-                    ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $4::jsonb,
-                    updated_at = now(),
-                    processed_at = now()
-                where id = $1
-                """,
-                card_id,
-                exc.code,
-                exc.message,
-                json.dumps({"lastOcrError": exc.metadata}),
-            )
-        raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message})
-
-    status = "completed" if result.text else "needs_review"
-    async with database.acquire() as connection:
-        await connection.execute(
-            """
-            update business_cards
-            set status = $2,
-                ocr_engine = $3,
-                ocr_text = $4,
-                ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $5::jsonb,
-                error_code = null,
-                error_message = null,
-                updated_at = now(),
-                processed_at = now()
-            where id = $1
-            """,
-            card_id,
-            status,
-            settings.ocr_engine,
-            result.text,
-            json.dumps({"lastOcrRun": result.metadata}),
-        )
-
-    return {
-        "cardId": str(card_id),
-        "status": status,
-        "ocrText": result.text,
-        "metadata": result.metadata,
-    }
+    return await run_card_ocr(card_id)
 
 
 @app.post("/api/cards/{card_id}/structure")
 async def structure_card(card_id: UUID) -> dict[str, Any]:
-    settings = get_settings()
-    async with database.acquire() as connection:
-        card = await connection.fetchrow(
-            """
-            select id, ocr_text
-            from business_cards
-            where id = $1
-            """,
-            card_id,
-        )
-        if card is None:
-            raise HTTPException(status_code=404, detail="Business card not found")
-        if not card["ocr_text"]:
-            raise HTTPException(status_code=409, detail="Business card has no OCR text")
-
-    result = await generate_contact_draft(card["ocr_text"], settings)
-    async with database.acquire() as connection:
-        await connection.execute(
-            """
-            update business_cards
-            set status = 'needs_review',
-                llm_provider = $2,
-                llm_model = $3,
-                llm_raw_output = $4::jsonb,
-                extracted_data = $5::jsonb,
-                updated_at = now()
-            where id = $1
-            """,
-            card_id,
-            result.source,
-            settings.llm_model,
-            json.dumps(result.raw_output, ensure_ascii=False),
-            json.dumps(result.data, ensure_ascii=False),
-        )
-
-    return {
-        "cardId": str(card_id),
-        "status": "needs_review",
-        "source": result.source,
-        "draft": result.data,
-    }
+    return await run_card_structure(card_id)
 
 
 @app.get("/api/contacts")
