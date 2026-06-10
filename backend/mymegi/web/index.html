@@ -163,6 +163,20 @@
                 <input name="district" type="text" />
               </label>
             </div>
+            <div class="field-grid three">
+              <label>
+                <span>公司分類</span>
+                <input name="companyClassifications" type="text" />
+              </label>
+              <label>
+                <span>地區分類</span>
+                <input name="regionClassifications" type="text" />
+              </label>
+              <label>
+                <span>產業分類</span>
+                <input name="industryClassifications" type="text" />
+              </label>
+            </div>
             <div class="field-grid">
               <label>
                 <span>認識場合</span>
@@ -187,6 +201,9 @@
           <h2>聯絡人</h2>
           <form class="search" id="contact-search">
             <input name="q" type="search" placeholder="搜尋姓名、公司、Email、電話" />
+            <input name="companyClassification" type="search" placeholder="公司分類" />
+            <input name="regionClassification" type="search" placeholder="地區分類" />
+            <input name="industryClassification" type="search" placeholder="產業分類" />
             <button type="submit">搜尋</button>
           </form>
         </div>
@@ -197,6 +214,7 @@
                 <th>姓名</th>
                 <th>公司</th>
                 <th>職稱</th>
+                <th>分類</th>
                 <th>建立時間</th>
               </tr>
             </thead>

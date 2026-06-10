@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -63,6 +63,20 @@ def selected_rotation(metadata: dict[str, Any]) -> int:
     except (TypeError, ValueError):
         return 0
     return rotation if rotation in {0, 90, 180, 270} else 0
+
+
+def clean_list(values: list[str]) -> list[str]:
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = clean_text(value)
+        if not text:
+            continue
+        key = normalize_lookup(text)
+        if key not in seen:
+            cleaned.append(text)
+            seen.add(key)
+    return cleaned
 
 
 class CompanyDraft(BaseModel):
@@ -425,6 +439,103 @@ async def process_card_for_review(card_id: UUID) -> dict[str, Any]:
     }
 
 
+async def link_contact_classification(
+    connection,
+    contact_id: UUID,
+    type_code: str,
+    name: str,
+    source: str = "manual",
+) -> None:
+    cleaned_name = clean_text(name)
+    if not cleaned_name:
+        return
+    type_id = await connection.fetchval(
+        """
+        select id
+        from classification_types
+        where code = $1
+        """,
+        type_code,
+    )
+    if type_id is None:
+        raise HTTPException(status_code=500, detail=f"Missing classification type: {type_code}")
+
+    classification_id = await connection.fetchval(
+        """
+        insert into classifications (type_id, name, normalized_name)
+        values ($1, $2, $3)
+        on conflict (type_id, normalized_name) do update
+        set name = excluded.name,
+            updated_at = now()
+        returning id
+        """,
+        type_id,
+        cleaned_name,
+        normalize_lookup(cleaned_name),
+    )
+    await connection.execute(
+        """
+        insert into contact_classifications (contact_id, classification_id, source)
+        values ($1, $2, $3)
+        on conflict (contact_id, classification_id) do update
+        set source = excluded.source
+        """,
+        contact_id,
+        classification_id,
+        source,
+    )
+
+
+def contact_filter_conditions(
+    start_index: int,
+    q: str | None,
+    company_classification: str | None,
+    region_classification: str | None,
+    industry_classification: str | None,
+) -> tuple[list[str], list[Any]]:
+    params: list[Any] = []
+    conditions = ["c.deleted_at is null"]
+    if q and q.strip():
+        params.append(f"%{q.strip()}%")
+        search_param = start_index + len(params) - 1
+        conditions.append(
+            f"""
+          (
+            c.display_name ilike ${search_param}
+            or coalesce(comp.name, '') ilike ${search_param}
+            or exists (
+              select 1 from contact_methods cm
+              where cm.contact_id = c.id and cm.value ilike ${search_param}
+            )
+          )
+        """
+        )
+
+    for type_code, value in (
+        ("company", company_classification),
+        ("region", region_classification),
+        ("industry", industry_classification),
+    ):
+        if value and value.strip():
+            params.extend([type_code, f"%{value.strip()}%"])
+            type_param = start_index + len(params) - 2
+            name_param = start_index + len(params) - 1
+            conditions.append(
+                f"""
+                exists (
+                  select 1
+                  from contact_classifications cc
+                  join classifications cl on cl.id = cc.classification_id
+                  join classification_types ct on ct.id = cl.type_id
+                  where cc.contact_id = c.id
+                    and ct.code = ${type_param}
+                    and cl.name ilike ${name_param}
+                )
+                """
+            )
+    return conditions, params
+
+
 @app.post("/api/cards/upload", status_code=201)
 async def upload_card(
     file: UploadFile = File(...),
@@ -630,6 +741,13 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                     clean_text(payload.note),
                 )
 
+            for name in clean_list(payload.classifications.company):
+                await link_contact_classification(connection, contact_id, "company", name)
+            for name in clean_list(payload.classifications.region):
+                await link_contact_classification(connection, contact_id, "region", name)
+            for name in clean_list(payload.classifications.industry):
+                await link_contact_classification(connection, contact_id, "industry", name)
+
             await connection.execute(
                 """
                 update business_cards
@@ -673,52 +791,67 @@ async def structure_card(card_id: UUID) -> dict[str, Any]:
 
 
 @app.get("/api/contacts")
-async def list_contacts(q: str | None = None, limit: int = 20, offset: int = 0) -> dict[str, Any]:
+async def list_contacts(
+    q: str | None = None,
+    company_classification: str | None = Query(default=None, alias="companyClassification"),
+    region_classification: str | None = Query(default=None, alias="regionClassification"),
+    industry_classification: str | None = Query(default=None, alias="industryClassification"),
+    limit: int = 20,
+    offset: int = 0,
+) -> dict[str, Any]:
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
-    search = f"%{q.strip()}%" if q and q.strip() else None
 
-    where = "where c.deleted_at is null"
-    params: list[Any] = [limit, offset]
-    if search:
-        where += """
-          and (
-            c.display_name ilike $3
-            or coalesce(comp.name, '') ilike $3
-            or exists (
-              select 1 from contact_methods cm
-              where cm.contact_id = c.id and cm.value ilike $3
-            )
-          )
-        """
-        params.append(search)
+    row_conditions, row_filter_params = contact_filter_conditions(
+        3,
+        q,
+        company_classification,
+        region_classification,
+        industry_classification,
+    )
+    row_params: list[Any] = [limit, offset, *row_filter_params]
+    row_where = "where " + " and ".join(row_conditions)
+
+    count_conditions, count_params = contact_filter_conditions(
+        1,
+        q,
+        company_classification,
+        region_classification,
+        industry_classification,
+    )
+    count_where = "where " + " and ".join(count_conditions)
 
     async with database.acquire() as connection:
         rows = await connection.fetch(
             f"""
-            select c.id, c.display_name, c.title, c.created_at, comp.name as company_name
+            select
+              c.id,
+              c.display_name,
+              c.title,
+              c.created_at,
+              comp.name as company_name,
+              coalesce(
+                (
+                  select jsonb_object_agg(grouped.code, grouped.names)
+                  from (
+                    select ct.code, jsonb_agg(cl.name order by cl.name) as names
+                    from contact_classifications cc
+                    join classifications cl on cl.id = cc.classification_id
+                    join classification_types ct on ct.id = cl.type_id
+                    where cc.contact_id = c.id
+                    group by ct.code
+                  ) grouped
+                ),
+                '{{}}'::jsonb
+              ) as classifications
             from contacts c
             left join companies comp on comp.id = c.company_id
-            {where}
+            {row_where}
             order by c.created_at desc
             limit $1 offset $2
             """,
-            *params,
+            *row_params,
         )
-        count_where = "where c.deleted_at is null"
-        count_params: list[Any] = []
-        if search:
-            count_where += """
-              and (
-                c.display_name ilike $1
-                or coalesce(comp.name, '') ilike $1
-                or exists (
-                  select 1 from contact_methods cm
-                  where cm.contact_id = c.id and cm.value ilike $1
-                )
-              )
-            """
-            count_params.append(search)
         total = await connection.fetchval(
             f"""
             select count(*)
@@ -736,6 +869,7 @@ async def list_contacts(q: str | None = None, limit: int = 20, offset: int = 0) 
                 "name": row["display_name"],
                 "title": row["title"],
                 "company": row["company_name"],
+                "classifications": json_object(row["classifications"]),
                 "createdAt": row["created_at"].isoformat(),
             }
             for row in rows
@@ -743,4 +877,43 @@ async def list_contacts(q: str | None = None, limit: int = 20, offset: int = 0) 
         "limit": limit,
         "offset": offset,
         "total": total,
+    }
+
+
+@app.get("/api/classifications")
+async def list_classifications(type: str | None = None) -> dict[str, Any]:
+    params: list[Any] = []
+    where = ""
+    if type and type.strip():
+        params.append(type.strip())
+        where = "where ct.code = $1"
+
+    async with database.acquire() as connection:
+        rows = await connection.fetch(
+            f"""
+            select
+              cl.id,
+              ct.code as type,
+              cl.name,
+              cl.description,
+              cl.created_at
+            from classifications cl
+            join classification_types ct on ct.id = cl.type_id
+            {where}
+            order by ct.code, cl.name
+            """,
+            *params,
+        )
+
+    return {
+        "items": [
+            {
+                "id": str(row["id"]),
+                "type": row["type"],
+                "name": row["name"],
+                "description": row["description"],
+                "createdAt": row["created_at"].isoformat(),
+            }
+            for row in rows
+        ]
     }

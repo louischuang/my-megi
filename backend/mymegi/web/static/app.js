@@ -1,5 +1,8 @@
 const state = {
   contactsQuery: "",
+  companyClassification: "",
+  regionClassification: "",
+  industryClassification: "",
   selectedCardId: null,
 };
 
@@ -42,6 +45,14 @@ const splitList = (value) =>
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+const classificationText = (classifications) => {
+  const values = [
+    ...(classifications?.company || []),
+    ...(classifications?.region || []),
+    ...(classifications?.industry || []),
+  ];
+  return values.length ? values.join(", ") : "";
+};
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -181,6 +192,12 @@ async function reviewCard(cardId) {
   setReviewField("country", draft.address?.country);
   setReviewField("city", draft.address?.city);
   setReviewField("district", draft.address?.district);
+  setReviewField("companyClassifications", listValue(draft.classifications?.company));
+  setReviewField("regionClassifications", listValue(draft.classifications?.region));
+  setReviewField(
+    "industryClassifications",
+    listValue(draft.classifications?.industry?.length ? draft.classifications.industry : [draft.company?.industry]),
+  );
   setReviewField("metAt", context.metAt);
   setReviewField("metOn", context.metOn);
   setReviewField("note", context.note || draft.notes);
@@ -211,9 +228,9 @@ function reviewPayload(form) {
       district: values.district || null,
     },
     classifications: {
-      company: [],
-      region: [],
-      industry: values.industry ? [values.industry] : [],
+      company: splitList(values.companyClassifications),
+      region: splitList(values.regionClassifications),
+      industry: splitList(values.industryClassifications || values.industry),
     },
     metAt: values.metAt || null,
     metOn: values.metOn || null,
@@ -224,10 +241,19 @@ function reviewPayload(form) {
 async function loadContacts() {
   const params = new URLSearchParams({ limit: "20" });
   if (state.contactsQuery) params.set("q", state.contactsQuery);
+  if (state.companyClassification) {
+    params.set("companyClassification", state.companyClassification);
+  }
+  if (state.regionClassification) {
+    params.set("regionClassification", state.regionClassification);
+  }
+  if (state.industryClassification) {
+    params.set("industryClassification", state.industryClassification);
+  }
   const data = await fetchJson(`/api/contacts?${params.toString()}`);
   const body = document.querySelector("#contacts-body");
   if (!data.items.length) {
-    body.innerHTML = `<tr><td colspan="4"><div class="empty">尚無聯絡人資料</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="5"><div class="empty">尚無聯絡人資料</div></td></tr>`;
     return;
   }
   body.innerHTML = data.items
@@ -237,6 +263,7 @@ async function loadContacts() {
           <td>${escapeHtml(item.name)}</td>
           <td>${escapeHtml(item.company)}</td>
           <td>${escapeHtml(item.title)}</td>
+          <td>${escapeHtml(classificationText(item.classifications))}</td>
           <td>${formatDate(item.createdAt)}</td>
         </tr>
       `,
@@ -318,7 +345,11 @@ document.querySelector("#review-form").addEventListener("submit", async (event) 
 
 document.querySelector("#contact-search").addEventListener("submit", async (event) => {
   event.preventDefault();
-  state.contactsQuery = new FormData(event.currentTarget).get("q").trim();
+  const form = new FormData(event.currentTarget);
+  state.contactsQuery = form.get("q").trim();
+  state.companyClassification = form.get("companyClassification").trim();
+  state.regionClassification = form.get("regionClassification").trim();
+  state.industryClassification = form.get("industryClassification").trim();
   await loadContacts();
 });
 

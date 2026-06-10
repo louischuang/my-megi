@@ -341,8 +341,9 @@ button.compact {
 }
 
 .search {
-  width: min(520px, 100%);
-  grid-template-columns: 1fr auto;
+  width: min(820px, 100%);
+  grid-template-columns: minmax(160px, 1.2fr) repeat(3, minmax(120px, 0.8fr)) auto;
+  gap: 8px;
 }
 
 .table-wrap {
