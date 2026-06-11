@@ -759,9 +759,11 @@ async def upload_card(
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
-    back_content = await back_file.read() if back_file else None
-    if back_file and not back_content:
-        raise HTTPException(status_code=400, detail="Uploaded back file is empty")
+    back_upload = back_file if back_file and back_file.filename else None
+    back_content = await back_upload.read() if back_upload else None
+    if back_upload and not back_content:
+        back_upload = None
+        back_content = None
     max_bytes = 20 * 1024 * 1024
     if len(content) > max_bytes:
         raise HTTPException(status_code=413, detail="Uploaded file is too large")
@@ -774,11 +776,11 @@ async def upload_card(
         file.filename,
         "front",
     )
-    if back_file and back_content:
+    if back_upload and back_content:
         back_content, back_content_type, back_suffix = normalize_upload_content(
             back_content,
-            back_file.content_type,
-            back_file.filename,
+            back_upload.content_type,
+            back_upload.filename,
             "back",
         )
     else:
@@ -798,7 +800,7 @@ async def upload_card(
     back_checksum = None
     back_storage_path = None
     back_safe_name = None
-    if back_file and back_content and back_suffix:
+    if back_upload and back_content and back_suffix:
         back_checksum = sha256(back_content).hexdigest()
         back_safe_name = f"{card_id}-back{back_suffix}"
         back_storage_path = settings.upload_dir / back_safe_name
@@ -825,7 +827,7 @@ async def upload_card(
             content_type,
             len(content),
             checksum,
-            back_file.filename if back_file else None,
+            back_upload.filename if back_upload else None,
             str(back_storage_path) if back_storage_path else None,
             back_content_type,
             len(back_content) if back_content else None,
@@ -847,7 +849,7 @@ async def upload_card(
         "cardId": str(card_id),
         "status": status,
         "fileName": file.filename or safe_name,
-        "backFileName": back_file.filename if back_file else None,
+        "backFileName": back_upload.filename if back_upload else None,
         "autoProcessed": process_result is not None,
         "processing": process_result,
         "processingError": processing_error,

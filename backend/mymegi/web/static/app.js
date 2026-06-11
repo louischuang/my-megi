@@ -319,9 +319,14 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
   const status = document.querySelector("#upload-state");
   status.textContent = "上傳與辨識中";
   try {
+    const formData = new FormData(form);
+    const backFile = formData.get("backFile");
+    if (backFile instanceof File && !backFile.name) {
+      formData.delete("backFile");
+    }
     const result = await fetchJson("/api/cards/upload", {
       method: "POST",
-      body: new FormData(form),
+      body: formData,
     });
     form.reset();
     document.querySelector("#file-meta").textContent = "JPG、PNG、WEBP、HEIC、HEIF、PDF，最大 20MB";
