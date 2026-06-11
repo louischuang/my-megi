@@ -8,16 +8,18 @@ const state = {
 
 const formatDate = (value) => {
   if (!value) return "";
-  return new Intl.DateTimeFormat("zh-Hant", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(new Date(value));
-};
-
-const fileSize = (bytes) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  const date = new Date(value);
+  const day = [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+  const time = [
+    String(date.getHours()).padStart(2, "0"),
+    String(date.getMinutes()).padStart(2, "0"),
+    String(date.getSeconds()).padStart(2, "0"),
+  ].join(":");
+  return `${day} ${time}`;
 };
 
 const escapeHtml = (value) =>
@@ -92,42 +94,37 @@ async function loadCards() {
     .map(
       (item) => {
         const draft = parseDraft(item.extractedData);
-        const draftText = draft.name
-          ? `${draft.name}${draft.company?.englishName ? ` · ${draft.company.englishName}` : ""}`
-          : "";
+        const companyName = draft.company?.name || draft.company?.englishName || "";
+        const draftText = [draft.name, companyName].filter(Boolean).join(" · ");
         const fileNames = [item.fileName, item.backFileName].filter(Boolean).join(" / ");
         return `
         <article class="list-item">
-          <div class="item-main">
-            <strong>${escapeHtml(fileNames)}</strong>
+          <div class="item-header">
+            <span class="badge">${escapeHtml(statusText(item.reviewStatus))}</span>
+            <strong title="${escapeHtml(fileNames)}">${escapeHtml(fileNames)}</strong>
+          </div>
+          <div class="item-row">
             <div class="item-meta">
-              <span>日期 ${escapeHtml(formatDate(item.createdAt))}</span>
+              <span>${escapeHtml(formatDate(item.createdAt))}</span>
               <span>信心度 ${escapeHtml(percentText(item.confidence))}</span>
               <span>辨識 ${escapeHtml(statusText(item.recognitionStatus))}</span>
-              <span>審核 ${escapeHtml(statusText(item.reviewStatus))}</span>
             </div>
-            ${
-              item.errorMessage
-                ? `<small class="error-text">${escapeHtml(item.errorMessage)}</small>`
-                : draftText
-                  ? `<small class="draft-text">${escapeHtml(draftText)}</small>`
-                : item.ocrPreview
-                  ? `<small>${escapeHtml(item.ocrPreview)}</small>`
-                  : ""
-            }
+            <div class="item-actions">
+              <button class="ghost compact icon-button" type="button" data-extract-card="${escapeHtml(item.id)}" title="重新辨識" aria-label="重新辨識">
+                ↻
+              </button>
+              <button class="ghost compact icon-button" type="button" data-review-card="${escapeHtml(item.id)}" title="審核" aria-label="審核">
+                ✓
+              </button>
+            </div>
           </div>
-          <div class="item-actions">
-            <span class="badge">${escapeHtml(item.status)}</span>
-            <button class="ghost compact" type="button" data-extract-card="${escapeHtml(item.id)}">
-              辨識
-            </button>
-            <button class="ghost compact" type="button" data-structure-card="${escapeHtml(item.id)}">
-              整理
-            </button>
-            <button class="ghost compact" type="button" data-review-card="${escapeHtml(item.id)}">
-              審核
-            </button>
-          </div>
+          ${
+            item.errorMessage
+              ? `<small class="error-text">${escapeHtml(item.errorMessage)}</small>`
+              : draftText
+                ? `<small class="draft-text">${escapeHtml(draftText)}</small>`
+                : ""
+          }
         </article>
       `;
       },
@@ -137,21 +134,9 @@ async function loadCards() {
 
 async function extractCard(cardId, button) {
   button.disabled = true;
-  button.textContent = "辨識中";
+  button.textContent = "...";
   try {
     await fetchJson(`/api/cards/${cardId}/extract`, { method: "POST" });
-    await refreshAll();
-  } catch (error) {
-    console.error(error);
-    await loadCards();
-  }
-}
-
-async function structureCard(cardId, button) {
-  button.disabled = true;
-  button.textContent = "整理中";
-  try {
-    await fetchJson(`/api/cards/${cardId}/structure`, { method: "POST" });
     await refreshAll();
   } catch (error) {
     console.error(error);
@@ -310,14 +295,14 @@ async function refreshAll() {
 document.querySelector("#card-file").addEventListener("change", (event) => {
   const file = event.target.files[0];
   document.querySelector("#file-meta").textContent = file
-    ? `${file.name} · ${fileSize(file.size)}`
+    ? file.name
     : "JPG、PNG、WEBP、PDF，最大 20MB";
 });
 
 document.querySelector("#card-back-file").addEventListener("change", (event) => {
   const file = event.target.files[0];
   document.querySelector("#back-file-meta").textContent = file
-    ? `${file.name} · ${fileSize(file.size)}`
+    ? file.name
     : "選填，最多再加一張";
 });
 
@@ -351,11 +336,6 @@ document.querySelector("#cards-list").addEventListener("click", async (event) =>
   const extractButton = event.target.closest("[data-extract-card]");
   if (extractButton) {
     await extractCard(extractButton.dataset.extractCard, extractButton);
-    return;
-  }
-  const structureButton = event.target.closest("[data-structure-card]");
-  if (structureButton) {
-    await structureCard(structureButton.dataset.structureCard, structureButton);
     return;
   }
   const reviewButton = event.target.closest("[data-review-card]");

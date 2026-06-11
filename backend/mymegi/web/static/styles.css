@@ -230,9 +230,9 @@ textarea {
 
 .list-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
   min-height: 58px;
   padding: 12px;
   border: 1px solid var(--line);
@@ -240,21 +240,36 @@ textarea {
   background: #fbfcfc;
 }
 
-.list-item strong {
-  display: block;
-  font-size: 14px;
-  overflow-wrap: anywhere;
+.item-header {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.item-main {
+.item-header strong {
   min-width: 0;
+  display: block;
+  flex: 1;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.item-row {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .item-meta {
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 6px;
 }
 
 .item-meta span {
@@ -269,8 +284,7 @@ textarea {
 
 .list-item small {
   display: block;
-  max-width: 52ch;
-  margin-top: 4px;
+  max-width: 100%;
   color: var(--muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -287,15 +301,17 @@ textarea {
 }
 
 .item-actions {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .badge {
-  min-width: 82px;
+  flex: 0 0 auto;
+  min-width: 58px;
   text-align: center;
   border-radius: 999px;
   padding: 5px 10px;
@@ -309,6 +325,16 @@ button.compact {
   min-height: 32px;
   padding: 5px 10px;
   font-size: 13px;
+}
+
+.icon-button {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+  font-size: 16px;
+  line-height: 1;
 }
 
 .contacts-panel {
@@ -454,6 +480,11 @@ th {
 
   .item-actions {
     justify-content: flex-start;
+  }
+
+  .item-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
   }
 
   .item-meta span {
