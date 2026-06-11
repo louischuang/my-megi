@@ -23,6 +23,8 @@
 
 - Web UI 可上傳 `jpg`、`png`、`webp`，PDF 可列為第二順位。
 - API 可用 multipart upload 上傳檔案。
+- 同一筆名片資料可包含 1 到 2 張圖片，最多分別代表正面與背面。
+- 系統需嘗試判斷正面/背面、直式/橫式，並以正確方向顯示預覽。
 - 上傳後建立 `business_cards` 紀錄。
 - 原始檔保存到本地 volume。
 
@@ -34,6 +36,7 @@
 - 建立 migration，可從空資料庫建立完整 schema。
 - schema 至少包含 `contacts`、`companies`、`business_cards`、`contact_methods`、`addresses`、`relationship_notes`、`classification_types`、`classifications`、`contact_classifications`、`tags`、`contact_tags`、`audit_logs`。
 - `business_cards` 需保存原始檔 metadata、OCR 原文、LLM 原始輸出、結構化抽取結果、處理狀態與錯誤訊息。
+- `business_cards` 需支援正反面原始檔 metadata、OCR/LLM 合併結果、信心度與額外備註。
 - `contacts`、`companies`、`relationship_notes` 可支援從一張名片建立一筆完整人脈資料。
 - email、電話、姓名、公司、分類、建立時間需有適合查詢的索引。
 - 使用 UUID 主鍵與 `jsonb` 保存 OCR/LLM metadata。
@@ -45,6 +48,7 @@
 - 本地 OCR engine 可從名片圖片擷取文字。
 - 處理狀態至少包含 `pending`、`processing`、`completed`、`failed`。
 - OCR 原文保存到資料庫。
+- 若有正反面圖片，OCR 結果需合併保存，並保留每面中間結果。
 - 失敗時保存錯誤訊息，方便重試。
 
 ### 5. LLM 結構化抽取
@@ -52,9 +56,11 @@
 驗收標準：
 
 - 使用 OpenAI-compatible API 呼叫 Ollama。
-- 輸入 OCR 文字，輸出符合 JSON schema 的聯絡人草稿。
+- 輸入 OCR 文字與可用時的正反面圖片，輸出符合 JSON schema 的聯絡人草稿。
 - 欄位至少包含姓名、公司、職稱、email、電話、地址、網站。
+- 草稿需包含信心度與額外備註，用於保存名片上無法歸入標準欄位的資訊。
 - schema 驗證失敗時可重試或標記為需要人工處理。
+- 信心度大於 0.9 且必要欄位足夠時可自動建立 contact；其餘進入人工審核。
 
 ### 6. 人工確認與儲存
 
@@ -62,6 +68,7 @@
 
 - 使用者可以在 UI 編輯抽取結果。
 - 使用者可以填寫「如何認識這位朋友」。
+- 最近匯入清單需顯示日期、圖檔名稱、信心度、辨識狀態與審核狀態，並避免長文字或小螢幕跑版。
 - 儲存後建立 contact、company、relationship note。
 - 若 email 或電話相同，提示可能重複資料。
 

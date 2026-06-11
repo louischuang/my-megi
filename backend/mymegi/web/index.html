@@ -48,8 +48,13 @@
           <form id="upload-form">
             <label class="file-drop">
               <input id="card-file" name="file" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" required />
-              <span class="file-title">選擇名片檔案</span>
+              <span class="file-title">選擇名片正面</span>
               <span class="file-meta" id="file-meta">JPG、PNG、WEBP、PDF，最大 20MB</span>
+            </label>
+            <label class="file-drop secondary-drop">
+              <input id="card-back-file" name="backFile" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" />
+              <span class="file-title">選擇名片背面</span>
+              <span class="file-meta" id="back-file-meta">選填，最多再加一張</span>
             </label>
 
             <div class="field-grid">
@@ -88,8 +93,8 @@
         </div>
         <div class="review-empty" id="review-empty">從最近匯入選擇一張名片進行審核</div>
         <div class="review-workbench" id="review-workbench" hidden>
-          <div class="evidence-column">
-            <div class="card-preview" id="card-preview"></div>
+            <div class="evidence-column">
+            <div class="card-preview-grid" id="card-preview"></div>
             <label>
               <span>OCR 文字</span>
               <textarea id="ocr-text" rows="9" readonly></textarea>
@@ -198,6 +203,10 @@
             <label>
               <span>認識備註</span>
               <textarea name="note" rows="3"></textarea>
+            </label>
+            <label>
+              <span>名片額外備註</span>
+              <textarea name="extraNotes" rows="3"></textarea>
             </label>
             <button type="submit">儲存為聯絡人</button>
           </form>

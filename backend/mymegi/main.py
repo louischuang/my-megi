@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from mymegi.config import get_settings
 from mymegi.db import database
-from mymegi.llm import generate_contact_draft
+from mymegi.llm import LlmImageInput, generate_contact_draft
 from mymegi.ocr import OcrError, render_oriented_preview, run_tesseract_ocr
 
 
@@ -79,6 +79,47 @@ def clean_list(values: list[str]) -> list[str]:
     return cleaned
 
 
+ALLOWED_UPLOAD_TYPES = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
+}
+
+
+def side_text_stats(text: str) -> dict[str, int]:
+    return {
+        "cjk": sum(1 for char in text if "\u4e00" <= char <= "\u9fff"),
+        "latin": sum(1 for char in text if "A" <= char <= "z"),
+        "digits": sum(1 for char in text if char.isdigit()),
+    }
+
+
+def detect_card_sides(front_text: str, back_text: str | None) -> dict[str, Any]:
+    front_stats = side_text_stats(front_text)
+    back_stats = side_text_stats(back_text or "")
+    front_role = "front"
+    back_role = "back" if back_text is not None else None
+    if back_text is not None and back_stats["cjk"] > front_stats["cjk"] + 3:
+        front_role = "back"
+        back_role = "front"
+    return {
+        "front": {"detectedRole": front_role, "textStats": front_stats},
+        "back": {"detectedRole": back_role, "textStats": back_stats} if back_text is not None else None,
+    }
+
+
+def draft_confidence(draft: dict[str, Any]) -> float:
+    try:
+        return max(0.0, min(1.0, float(draft.get("confidence") or 0.0)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def is_auto_confirmable(draft: dict[str, Any]) -> bool:
+    return draft_confidence(draft) > 0.9 and bool(clean_text(draft.get("name")))
+
+
 class CompanyDraft(BaseModel):
     name: str | None = None
     englishName: str | None = None
@@ -115,6 +156,7 @@ class ConfirmCardRequest(BaseModel):
     metAt: str | None = None
     metOn: str | None = None
     note: str | None = None
+    extraNotes: str | None = None
 
 
 @asynccontextmanager
@@ -183,9 +225,9 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
         rows = await connection.fetch(
             """
             select
-              id, original_filename, mime_type, file_size_bytes, status,
+              id, original_filename, back_original_filename, mime_type, file_size_bytes, status,
               created_at, error_message, left(coalesce(ocr_text, ''), 160) as ocr_preview,
-              extracted_data
+              extracted_data, extraction_confidence, contact_id
             from business_cards
             order by created_at desc
             limit $1
@@ -197,9 +239,13 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
             {
                 "id": str(row["id"]),
                 "fileName": row["original_filename"],
+                "backFileName": row["back_original_filename"],
                 "mimeType": row["mime_type"],
                 "fileSizeBytes": row["file_size_bytes"],
                 "status": row["status"],
+                "recognitionStatus": "failed" if row["error_message"] else ("done" if row["extracted_data"] else "pending"),
+                "reviewStatus": "completed" if row["contact_id"] else ("needs_review" if row["status"] == "needs_review" else row["status"]),
+                "confidence": float(row["extraction_confidence"]) if row["extraction_confidence"] is not None else None,
                 "createdAt": row["created_at"].isoformat(),
                 "errorMessage": row["error_message"],
                 "ocrPreview": row["ocr_preview"],
@@ -216,7 +262,9 @@ async def get_card(card_id: UUID) -> dict[str, Any]:
         row = await connection.fetchrow(
             """
             select
-              id, contact_id, original_filename, mime_type, file_size_bytes, status,
+              id, contact_id, original_filename, storage_path, mime_type, file_size_bytes,
+              back_original_filename, back_storage_path, back_mime_type, back_file_size_bytes,
+              status, side_metadata, extra_notes,
               created_at, updated_at, error_code, error_message, ocr_text, ocr_metadata,
               llm_provider, llm_model, extracted_data, extraction_confidence
             from business_cards
@@ -232,8 +280,10 @@ async def get_card(card_id: UUID) -> dict[str, Any]:
         "id": str(row["id"]),
         "contactId": str(row["contact_id"]) if row["contact_id"] else None,
         "fileName": row["original_filename"],
+        "backFileName": row["back_original_filename"],
         "mimeType": row["mime_type"],
         "fileSizeBytes": row["file_size_bytes"],
+        "sideMetadata": json_object(row["side_metadata"]),
         "status": row["status"],
         "createdAt": row["created_at"].isoformat(),
         "updatedAt": row["updated_at"].isoformat(),
@@ -246,17 +296,43 @@ async def get_card(card_id: UUID) -> dict[str, Any]:
         "llmModel": row["llm_model"],
         "extractedData": json_object(row["extracted_data"]),
         "extractionConfidence": float(row["extraction_confidence"]) if row["extraction_confidence"] is not None else None,
+        "extraNotes": row["extra_notes"],
         "fileUrl": f"/api/cards/{card_id}/file",
         "previewUrl": f"/api/cards/{card_id}/preview",
+        "imageSides": [
+            {
+                "side": "front",
+                "fileName": row["original_filename"],
+                "mimeType": row["mime_type"],
+                "fileSizeBytes": row["file_size_bytes"],
+                "fileUrl": f"/api/cards/{card_id}/file?side=front",
+                "previewUrl": f"/api/cards/{card_id}/preview?side=front",
+            },
+            *(
+                [
+                    {
+                        "side": "back",
+                        "fileName": row["back_original_filename"],
+                        "mimeType": row["back_mime_type"],
+                        "fileSizeBytes": row["back_file_size_bytes"],
+                        "fileUrl": f"/api/cards/{card_id}/file?side=back",
+                        "previewUrl": f"/api/cards/{card_id}/preview?side=back",
+                    }
+                ]
+                if row["back_storage_path"]
+                else []
+            ),
+        ],
     }
 
 
 @app.get("/api/cards/{card_id}/file")
-async def get_card_file(card_id: UUID) -> FileResponse:
+async def get_card_file(card_id: UUID, side: str = "front") -> FileResponse:
     async with database.acquire() as connection:
         row = await connection.fetchrow(
             """
-            select original_filename, storage_path, mime_type
+            select original_filename, storage_path, mime_type,
+                   back_original_filename, back_storage_path, back_mime_type
             from business_cards
             where id = $1
             """,
@@ -265,18 +341,27 @@ async def get_card_file(card_id: UUID) -> FileResponse:
     if row is None:
         raise HTTPException(status_code=404, detail="Business card not found")
 
-    path = Path(row["storage_path"])
+    if side == "back" and row["back_storage_path"]:
+        path = Path(row["back_storage_path"])
+        mime_type = row["back_mime_type"]
+        filename = row["back_original_filename"]
+    else:
+        path = Path(row["storage_path"])
+        mime_type = row["mime_type"]
+        filename = row["original_filename"]
     if not path.exists():
         raise HTTPException(status_code=404, detail="Stored business card file not found")
-    return FileResponse(path, media_type=row["mime_type"], filename=row["original_filename"])
+    return FileResponse(path, media_type=mime_type, filename=filename)
 
 
 @app.get("/api/cards/{card_id}/preview", response_model=None)
-async def get_card_preview(card_id: UUID):
+async def get_card_preview(card_id: UUID, side: str = "front"):
     async with database.acquire() as connection:
         row = await connection.fetchrow(
             """
-            select original_filename, storage_path, mime_type, ocr_metadata
+            select original_filename, storage_path, mime_type,
+                   back_original_filename, back_storage_path, back_mime_type,
+                   ocr_metadata
             from business_cards
             where id = $1
             """,
@@ -285,17 +370,26 @@ async def get_card_preview(card_id: UUID):
     if row is None:
         raise HTTPException(status_code=404, detail="Business card not found")
 
-    path = Path(row["storage_path"])
+    if side == "back" and row["back_storage_path"]:
+        path = Path(row["back_storage_path"])
+        mime_type = row["back_mime_type"]
+        filename = row["back_original_filename"]
+        metadata = json_object(json_object(row["ocr_metadata"]).get("back"))
+    else:
+        path = Path(row["storage_path"])
+        mime_type = row["mime_type"]
+        filename = row["original_filename"]
+        metadata = json_object(json_object(row["ocr_metadata"]).get("front")) or json_object(row["ocr_metadata"])
     if not path.exists():
         raise HTTPException(status_code=404, detail="Stored business card file not found")
-    if not row["mime_type"].startswith("image/"):
-        return FileResponse(path, media_type=row["mime_type"], filename=row["original_filename"])
+    if not mime_type.startswith("image/"):
+        return FileResponse(path, media_type=mime_type, filename=filename)
 
     try:
         preview = await asyncio.to_thread(
             render_oriented_preview,
             path,
-            selected_rotation(json_object(row["ocr_metadata"])),
+            selected_rotation(metadata),
         )
     except OSError as exc:
         raise HTTPException(status_code=422, detail="Unable to render image preview") from exc
@@ -307,7 +401,7 @@ async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
     async with database.acquire() as connection:
         card = await connection.fetchrow(
             """
-            select id, storage_path, mime_type
+            select id, storage_path, mime_type, back_storage_path, back_mime_type
             from business_cards
             where id = $1
             """,
@@ -329,11 +423,18 @@ async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
         )
 
     try:
-        result = await asyncio.to_thread(
+        front_result = await asyncio.to_thread(
             run_tesseract_ocr,
             Path(card["storage_path"]),
             card["mime_type"],
         )
+        back_result = None
+        if card["back_storage_path"] and card["back_mime_type"]:
+            back_result = await asyncio.to_thread(
+                run_tesseract_ocr,
+                Path(card["back_storage_path"]),
+                card["back_mime_type"],
+            )
     except OcrError as exc:
         async with database.acquire() as connection:
             await connection.execute(
@@ -354,7 +455,12 @@ async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
             )
         raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message})
 
-    status = "completed" if result.text else "needs_review"
+    side_metadata = detect_card_sides(front_result.text, back_result.text if back_result else None)
+    side_texts = [f"[front]\n{front_result.text}"]
+    if back_result:
+        side_texts.append(f"[back]\n{back_result.text}")
+    merged_text = "\n\n".join(side_texts).strip()
+    status = "completed" if merged_text else "needs_review"
     async with database.acquire() as connection:
         await connection.execute(
             """
@@ -363,6 +469,7 @@ async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
                 ocr_engine = $3,
                 ocr_text = $4,
                 ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $5::jsonb,
+                side_metadata = coalesce(side_metadata, '{}'::jsonb) || $6::jsonb,
                 error_code = null,
                 error_message = null,
                 updated_at = now(),
@@ -372,15 +479,27 @@ async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
             card_id,
             status,
             settings.ocr_engine,
-            result.text,
-            json.dumps({"lastOcrRun": result.metadata}),
+            merged_text,
+            json.dumps(
+                {
+                    "front": {"lastOcrRun": front_result.metadata},
+                    "back": {"lastOcrRun": back_result.metadata} if back_result else None,
+                    "lastOcrRun": front_result.metadata,
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps(side_metadata, ensure_ascii=False),
         )
 
     return {
         "cardId": str(card_id),
         "status": status,
-        "ocrText": result.text,
-        "metadata": result.metadata,
+        "ocrText": merged_text,
+        "metadata": {
+            "front": front_result.metadata,
+            "back": back_result.metadata if back_result else None,
+            "sideMetadata": side_metadata,
+        },
     }
 
 
@@ -389,7 +508,8 @@ async def run_card_structure(card_id: UUID) -> dict[str, Any]:
     async with database.acquire() as connection:
         card = await connection.fetchrow(
             """
-            select id, ocr_text, storage_path, mime_type, ocr_metadata
+            select id, ocr_text, storage_path, mime_type,
+                   back_storage_path, back_mime_type, ocr_metadata
             from business_cards
             where id = $1
             """,
@@ -400,13 +520,31 @@ async def run_card_structure(card_id: UUID) -> dict[str, Any]:
         if not card["ocr_text"]:
             raise HTTPException(status_code=409, detail="Business card has no OCR text")
 
+    ocr_metadata = json_object(card["ocr_metadata"])
+    image_inputs = [
+        LlmImageInput(
+            path=Path(card["storage_path"]),
+            mime_type=card["mime_type"],
+            rotation=selected_rotation(json_object(ocr_metadata.get("front")) or ocr_metadata),
+            label="front",
+        )
+    ]
+    if card["back_storage_path"] and card["back_mime_type"]:
+        image_inputs.append(
+            LlmImageInput(
+                path=Path(card["back_storage_path"]),
+                mime_type=card["back_mime_type"],
+                rotation=selected_rotation(json_object(ocr_metadata.get("back"))),
+                label="back",
+            )
+        )
+
     result = await generate_contact_draft(
         card["ocr_text"],
         settings,
-        image_path=Path(card["storage_path"]),
-        image_mime_type=card["mime_type"],
-        image_rotation=selected_rotation(json_object(card["ocr_metadata"])),
+        image_inputs=image_inputs,
     )
+    confidence = draft_confidence(result.data)
     async with database.acquire() as connection:
         await connection.execute(
             """
@@ -416,6 +554,8 @@ async def run_card_structure(card_id: UUID) -> dict[str, Any]:
                 llm_model = $3,
                 llm_raw_output = $4::jsonb,
                 extracted_data = $5::jsonb,
+                extraction_confidence = $6,
+                extra_notes = $7,
                 updated_at = now()
             where id = $1
             """,
@@ -424,6 +564,8 @@ async def run_card_structure(card_id: UUID) -> dict[str, Any]:
             settings.llm_model,
             json.dumps(result.raw_output, ensure_ascii=False),
             json.dumps(result.data, ensure_ascii=False),
+            confidence,
+            clean_text(result.data.get("extraNotes")),
         )
 
     return {
@@ -439,11 +581,24 @@ async def process_card_for_review(card_id: UUID) -> dict[str, Any]:
     if not ocr_result["ocrText"]:
         return ocr_result
     structure_result = await run_card_structure(card_id)
+    draft = structure_result["draft"]
+    if is_auto_confirmable(draft):
+        payload = ConfirmCardRequest.model_validate(draft)
+        confirm_result = await confirm_card(card_id, payload)
+        return {
+            "cardId": str(card_id),
+            "status": confirm_result["status"],
+            "ocr": ocr_result,
+            "structure": structure_result,
+            "autoConfirmed": True,
+            "contactId": confirm_result["contactId"],
+        }
     return {
         "cardId": str(card_id),
         "status": structure_result["status"],
         "ocr": ocr_result,
         "structure": structure_result,
+        "autoConfirmed": False,
     }
 
 
@@ -549,34 +704,46 @@ def contact_filter_conditions(
 @app.post("/api/cards/upload", status_code=201)
 async def upload_card(
     file: UploadFile = File(...),
+    back_file: UploadFile | None = File(default=None, alias="backFile"),
     met_at: str | None = Form(default=None, alias="metAt"),
     met_on: str | None = Form(default=None, alias="metOn"),
     note: str | None = Form(default=None),
 ) -> dict[str, Any]:
     settings = get_settings()
-    allowed_types = {
-        "image/jpeg": ".jpg",
-        "image/png": ".png",
-        "image/webp": ".webp",
-        "application/pdf": ".pdf",
-    }
-    if file.content_type not in allowed_types:
+
+    if file.content_type not in ALLOWED_UPLOAD_TYPES:
         raise HTTPException(status_code=415, detail="Unsupported file type")
+    if back_file and back_file.content_type not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(status_code=415, detail="Unsupported back file type")
 
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    back_content = await back_file.read() if back_file else None
+    if back_file and not back_content:
+        raise HTTPException(status_code=400, detail="Uploaded back file is empty")
     max_bytes = 20 * 1024 * 1024
     if len(content) > max_bytes:
         raise HTTPException(status_code=413, detail="Uploaded file is too large")
+    if back_content and len(back_content) > max_bytes:
+        raise HTTPException(status_code=413, detail="Uploaded back file is too large")
 
     card_id = uuid4()
     checksum = sha256(content).hexdigest()
-    suffix = allowed_types[file.content_type]
+    suffix = ALLOWED_UPLOAD_TYPES[file.content_type]
     safe_name = f"{card_id}{suffix}"
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     storage_path = settings.upload_dir / safe_name
     storage_path.write_bytes(content)
+    back_checksum = None
+    back_storage_path = None
+    back_safe_name = None
+    if back_file and back_content:
+        back_checksum = sha256(back_content).hexdigest()
+        back_suffix = ALLOWED_UPLOAD_TYPES[back_file.content_type]
+        back_safe_name = f"{card_id}-back{back_suffix}"
+        back_storage_path = settings.upload_dir / back_safe_name
+        back_storage_path.write_bytes(back_content)
 
     upload_context = {
         "metAt": met_at,
@@ -588,9 +755,10 @@ async def upload_card(
             """
             insert into business_cards (
               id, original_filename, storage_path, mime_type, file_size_bytes,
-              checksum_sha256, status, ocr_engine, ocr_metadata
+              checksum_sha256, back_original_filename, back_storage_path, back_mime_type,
+              back_file_size_bytes, back_checksum_sha256, status, ocr_engine, ocr_metadata
             )
-            values ($1, $2, $3, $4, $5, $6, 'pending', $7, $8::jsonb)
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12, $13::jsonb)
             """,
             card_id,
             file.filename or safe_name,
@@ -598,8 +766,13 @@ async def upload_card(
             file.content_type,
             len(content),
             checksum,
+            back_file.filename if back_file else None,
+            str(back_storage_path) if back_storage_path else None,
+            back_file.content_type if back_file else None,
+            len(back_content) if back_content else None,
+            back_checksum,
             settings.ocr_engine,
-            json.dumps({"uploadContext": upload_context}),
+            json.dumps({"uploadContext": upload_context}, ensure_ascii=False),
         )
 
     try:
@@ -615,6 +788,7 @@ async def upload_card(
         "cardId": str(card_id),
         "status": status,
         "fileName": file.filename or safe_name,
+        "backFileName": back_file.filename if back_file else None,
         "autoProcessed": process_result is not None,
         "processing": process_result,
         "processingError": processing_error,
@@ -674,9 +848,9 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
             contact_id = await connection.fetchval(
                 """
                     insert into contacts (
-                  company_id, display_name, english_name, title, notes, source_business_card_id, metadata
+                  company_id, display_name, english_name, title, notes, extra_notes, source_business_card_id, metadata
                 )
-                values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+                values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
                 returning id
                 """,
                 company_id,
@@ -684,6 +858,7 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                 clean_text(payload.englishName),
                 clean_text(payload.title),
                 clean_text(payload.note),
+                clean_text(payload.extraNotes),
                 card_id,
                 json.dumps(
                     {
@@ -770,6 +945,7 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                 set contact_id = $2,
                     status = 'completed',
                     extracted_data = $3::jsonb,
+                    extra_notes = $4,
                     updated_at = now(),
                     processed_at = coalesce(processed_at, now())
                 where id = $1
@@ -777,6 +953,7 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                 card_id,
                 contact_id,
                 json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
+                clean_text(payload.extraNotes),
             )
 
             await connection.execute(

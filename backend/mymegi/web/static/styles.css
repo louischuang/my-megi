@@ -206,6 +206,10 @@ textarea {
   cursor: pointer;
 }
 
+.secondary-drop {
+  min-height: 92px;
+}
+
 .file-drop input {
   position: absolute;
   inline-size: 1px;
@@ -226,8 +230,8 @@ textarea {
 
 .list-item {
   display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
   align-items: center;
   min-height: 58px;
   padding: 12px;
@@ -239,6 +243,28 @@ textarea {
 .list-item strong {
   display: block;
   font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.item-main {
+  min-width: 0;
+}
+
+.item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.item-meta span {
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: var(--surface-2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .list-item small {
@@ -262,7 +288,9 @@ textarea {
 
 .item-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -313,15 +341,30 @@ button.compact {
   gap: 14px;
 }
 
+.card-preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
 .card-preview {
   min-height: 260px;
   max-height: 560px;
   display: grid;
-  place-items: center;
+  grid-template-rows: auto 1fr;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #eef3f2;
+  margin: 0;
+}
+
+.card-preview figcaption {
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+  background: #f9fbfb;
 }
 
 .card-preview img,
@@ -410,6 +453,10 @@ th {
   }
 
   .item-actions {
-    justify-content: space-between;
+    justify-content: flex-start;
+  }
+
+  .item-meta span {
+    white-space: normal;
   }
 }

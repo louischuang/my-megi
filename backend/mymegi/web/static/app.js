@@ -53,6 +53,16 @@ const classificationText = (classifications) => {
   ];
   return values.length ? values.join(", ") : "";
 };
+const percentText = (value) => (value == null ? "未評估" : `${Math.round(Number(value) * 100)}%`);
+const statusText = (value) =>
+  ({
+    completed: "已入庫",
+    needs_review: "待審核",
+    processing: "處理中",
+    pending: "待處理",
+    failed: "失敗",
+    done: "已辨識",
+  })[value] || value || "未知";
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -85,11 +95,17 @@ async function loadCards() {
         const draftText = draft.name
           ? `${draft.name}${draft.company?.englishName ? ` · ${draft.company.englishName}` : ""}`
           : "";
+        const fileNames = [item.fileName, item.backFileName].filter(Boolean).join(" / ");
         return `
         <article class="list-item">
-          <div>
-            <strong>${escapeHtml(item.fileName)}</strong>
-            <span>${fileSize(item.fileSizeBytes)} · ${formatDate(item.createdAt)}</span>
+          <div class="item-main">
+            <strong>${escapeHtml(fileNames)}</strong>
+            <div class="item-meta">
+              <span>日期 ${escapeHtml(formatDate(item.createdAt))}</span>
+              <span>信心度 ${escapeHtml(percentText(item.confidence))}</span>
+              <span>辨識 ${escapeHtml(statusText(item.recognitionStatus))}</span>
+              <span>審核 ${escapeHtml(statusText(item.reviewStatus))}</span>
+            </div>
             ${
               item.errorMessage
                 ? `<small class="error-text">${escapeHtml(item.errorMessage)}</small>`
@@ -154,12 +170,22 @@ function setReviewField(name, value) {
 
 function renderCardPreview(card) {
   const preview = document.querySelector("#card-preview");
-  if (card.mimeType?.startsWith("image/")) {
-    preview.innerHTML = `<img src="${card.previewUrl || card.fileUrl}" alt="${escapeHtml(card.fileName)}" />`;
-    return;
-  }
-  if (card.mimeType === "application/pdf") {
-    preview.innerHTML = `<iframe src="${card.fileUrl}" title="${escapeHtml(card.fileName)}"></iframe>`;
+  const sides = card.imageSides?.length
+    ? card.imageSides
+    : [{ side: "front", fileName: card.fileName, mimeType: card.mimeType, fileUrl: card.fileUrl, previewUrl: card.previewUrl }];
+  preview.innerHTML = sides
+    .map((side) => {
+      const label = side.side === "back" ? "背面" : "正面";
+      if (side.mimeType?.startsWith("image/")) {
+        return `<figure class="card-preview"><figcaption>${label}</figcaption><img src="${side.previewUrl || side.fileUrl}" alt="${escapeHtml(side.fileName)}" /></figure>`;
+      }
+      if (side.mimeType === "application/pdf") {
+        return `<figure class="card-preview"><figcaption>${label}</figcaption><iframe src="${side.fileUrl}" title="${escapeHtml(side.fileName)}"></iframe></figure>`;
+      }
+      return `<figure class="card-preview"><figcaption>${label}</figcaption><div class="empty">無法預覽此檔案</div></figure>`;
+    })
+    .join("");
+  if (sides.length) {
     return;
   }
   preview.innerHTML = `<div class="empty">無法預覽此檔案</div>`;
@@ -203,6 +229,7 @@ async function reviewCard(cardId) {
   setReviewField("metAt", context.metAt);
   setReviewField("metOn", context.metOn);
   setReviewField("note", context.note || draft.notes);
+  setReviewField("extraNotes", card.extraNotes || draft.extraNotes);
   setReviewState(card.status);
   document.querySelector("#review").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -239,6 +266,7 @@ function reviewPayload(form) {
     metAt: values.metAt || null,
     metOn: values.metOn || null,
     note: values.note || null,
+    extraNotes: values.extraNotes || null,
   };
 }
 
@@ -286,6 +314,13 @@ document.querySelector("#card-file").addEventListener("change", (event) => {
     : "JPG、PNG、WEBP、PDF，最大 20MB";
 });
 
+document.querySelector("#card-back-file").addEventListener("change", (event) => {
+  const file = event.target.files[0];
+  document.querySelector("#back-file-meta").textContent = file
+    ? `${file.name} · ${fileSize(file.size)}`
+    : "選填，最多再加一張";
+});
+
 document.querySelector("#upload-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -298,6 +333,7 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
     });
     form.reset();
     document.querySelector("#file-meta").textContent = "JPG、PNG、WEBP、PDF，最大 20MB";
+    document.querySelector("#back-file-meta").textContent = "選填，最多再加一張";
     status.textContent = result.status === "needs_review" ? "待審核" : result.status;
     await refreshAll();
     if (result.cardId) {

@@ -27,6 +27,14 @@ class ContactDraftResult:
     source: str
 
 
+@dataclass(frozen=True)
+class LlmImageInput:
+    path: Path
+    mime_type: str
+    rotation: int = 0
+    label: str = "business card"
+
+
 SYSTEM_PROMPT = """You extract business card data into clean JSON.
 Return only a JSON object. Do not include markdown.
 Preserve Traditional Chinese when present.
@@ -67,6 +75,7 @@ def contact_schema_template() -> dict[str, Any]:
             "industry": [],
         },
         "notes": None,
+        "extraNotes": None,
         "confidence": 0.0,
     }
 
@@ -166,11 +175,11 @@ def encode_image_data_url(image_path: Path, mime_type: str, rotation: int = 0) -
     return f"data:image/jpeg;base64,{encoded}"
 
 
-def build_user_prompt(ocr_text: str, has_image: bool) -> str:
+def build_user_prompt(ocr_text: str, image_count: int) -> str:
     image_instruction = (
-        "An image of the business card is attached. Use it to resolve OCR mistakes, "
-        "rotated text, Chinese names, and field labels."
-        if has_image
+        f"{image_count} business card image(s) are attached. Use all sides to resolve OCR mistakes, "
+        "rotated text, Chinese/English names, and field labels."
+        if image_count
         else "Only OCR text is available. Be conservative when OCR text is noisy."
     )
     prompt = f"""
@@ -185,6 +194,7 @@ Important extraction rules:
 - A Taiwanese 統一編號/統編 is company.taxId.
 - Put landline numbers under phones, mobile numbers beginning with 09 or +886-9 under mobiles, and fax under fax.
 - Use notes for department names, extension numbers, or relationship-relevant visible context that does not fit another field.
+- Use extraNotes for other visible information, slogans, product lines, QR/link hints, or card-side details that do not fit standard fields.
 - Suggest classifications.region from visible country/city/district and classifications.industry from the organization type.
 
 JSON shape:
@@ -202,19 +212,29 @@ async def generate_contact_draft_with_llm(
     image_path: Path | None = None,
     image_mime_type: str | None = None,
     image_rotation: int = 0,
+    image_inputs: list[LlmImageInput] | None = None,
 ) -> ContactDraftResult:
-    image_data_url = None
+    prepared_images: list[tuple[str, str]] = []
+    if image_inputs is None:
+        image_inputs = []
     if image_path and image_mime_type:
-        image_data_url = encode_image_data_url(image_path, image_mime_type, image_rotation)
-
-    prompt = build_user_prompt(ocr_text, image_data_url is not None)
-    user_content: str | list[dict[str, Any]]
-    input_mode = "vision" if image_data_url else "ocr_text"
-    if image_data_url:
-        user_content = [
-            {"type": "text", "text": prompt},
-            {"type": "image_url", "image_url": {"url": image_data_url}},
+        image_inputs = [
+            *image_inputs,
+            LlmImageInput(path=image_path, mime_type=image_mime_type, rotation=image_rotation),
         ]
+    for image in image_inputs:
+        data_url = encode_image_data_url(image.path, image.mime_type, image.rotation)
+        if data_url:
+            prepared_images.append((image.label, data_url))
+
+    prompt = build_user_prompt(ocr_text, len(prepared_images))
+    user_content: str | list[dict[str, Any]]
+    input_mode = "vision" if prepared_images else "ocr_text"
+    if prepared_images:
+        user_content = [{"type": "text", "text": prompt}]
+        for label, image_data_url in prepared_images:
+            user_content.append({"type": "text", "text": f"Image side: {label}"})
+            user_content.append({"type": "image_url", "image_url": {"url": image_data_url}})
     else:
         user_content = prompt
 
@@ -256,7 +276,7 @@ async def generate_contact_draft_with_llm(
             {"content": content, "error": str(exc)},
         ) from exc
 
-    return ContactDraftResult(data=data, raw_output=raw, source="llm_vision" if image_data_url else "llm")
+    return ContactDraftResult(data=data, raw_output=raw, source="llm_vision" if prepared_images else "llm")
 
 
 def first_match(pattern: str, text: str, flags: int = re.IGNORECASE) -> str | None:
@@ -333,6 +353,7 @@ def fallback_contact_draft(ocr_text: str) -> ContactDraftResult:
                 "region": ["Taiwan", "Taipei"] if "Taipei" in text or "台北" in text else [],
                 "industry": [],
             },
+            "extraNotes": None,
             "confidence": 0.45,
         }
     )
@@ -349,9 +370,11 @@ async def generate_contact_draft(
     image_path: Path | None = None,
     image_mime_type: str | None = None,
     image_rotation: int = 0,
+    image_inputs: list[LlmImageInput] | None = None,
 ) -> ContactDraftResult:
     vision_error: LlmError | None = None
-    if image_path and image_mime_type and image_mime_type.startswith("image/"):
+    has_images = bool(image_inputs) or bool(image_path and image_mime_type and image_mime_type.startswith("image/"))
+    if has_images:
         try:
             return await generate_contact_draft_with_llm(
                 ocr_text,
@@ -359,6 +382,7 @@ async def generate_contact_draft(
                 image_path=image_path,
                 image_mime_type=image_mime_type,
                 image_rotation=image_rotation,
+                image_inputs=image_inputs,
             )
         except LlmError as exc:
             vision_error = exc

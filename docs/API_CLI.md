@@ -31,11 +31,15 @@
 {
   "id": "card_123",
   "fileName": "alice.jpg",
+  "backFileName": "alice-back.jpg",
   "mimeType": "image/jpeg",
   "status": "completed",
+  "recognitionStatus": "done",
+  "reviewStatus": "completed",
   "ocrText": "Alice Chen...",
   "extractedData": {},
   "confidence": 0.82,
+  "extraNotes": "Back side includes product categories.",
   "createdAt": "2026-06-09T12:00:00+08:00",
   "updatedAt": "2026-06-09T12:01:00+08:00"
 }
@@ -102,6 +106,7 @@ Request:
 
 - `multipart/form-data`
 - field `file`: image or PDF
+- optional field `backFile`: image or PDF for the back side of the same card
 - optional field `metAt`
 - optional field `metOn`
 - optional field `note`
@@ -161,7 +166,9 @@ Response `200`:
     "address": {
       "raw": "台北市...",
       "englishRaw": "No. 1, Example Rd., Taipei, Taiwan"
-    }
+    },
+    "confidence": 0.92,
+    "extraNotes": "Back side includes product categories."
   }
 }
 ```
@@ -187,6 +194,7 @@ Request:
   "city": "Taipei",
   "addressRaw": "台北市...",
   "addressEnglishRaw": "No. 1, Example Rd., Taipei, Taiwan",
+  "extraNotes": "Back side includes product categories.",
   "relationshipNote": {
     "metAt": "2026 Taipei Expo",
     "metOn": "2026-06-09",
