@@ -69,7 +69,14 @@ const statusText = (value) =>
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) {
-    const message = await response.text();
+    const text = await response.text();
+    let message = text;
+    try {
+      const payload = JSON.parse(text);
+      message = payload.detail || payload.message || text;
+    } catch {
+      message = text;
+    }
     throw new Error(message || `Request failed: ${response.status}`);
   }
   return response.json();
@@ -296,7 +303,7 @@ document.querySelector("#card-file").addEventListener("change", (event) => {
   const file = event.target.files[0];
   document.querySelector("#file-meta").textContent = file
     ? file.name
-    : "JPG、PNG、WEBP、PDF，最大 20MB";
+    : "JPG、PNG、WEBP、HEIC、HEIF、PDF，最大 20MB";
 });
 
 document.querySelector("#card-back-file").addEventListener("change", (event) => {
@@ -317,7 +324,7 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
       body: new FormData(form),
     });
     form.reset();
-    document.querySelector("#file-meta").textContent = "JPG、PNG、WEBP、PDF，最大 20MB";
+    document.querySelector("#file-meta").textContent = "JPG、PNG、WEBP、HEIC、HEIF、PDF，最大 20MB";
     document.querySelector("#back-file-meta").textContent = "選填，最多再加一張";
     status.textContent = result.status === "needs_review" ? "待審核" : result.status;
     await refreshAll();
@@ -325,7 +332,7 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
       await reviewCard(result.cardId);
     }
   } catch (error) {
-    status.textContent = "失敗";
+    status.textContent = error.message ? `失敗：${error.message}` : "失敗";
     console.error(error);
   }
 });

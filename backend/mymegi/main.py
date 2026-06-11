@@ -3,6 +3,7 @@ import asyncio
 from contextlib import asynccontextmanager
 from datetime import date
 from hashlib import sha256
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -10,6 +11,8 @@ from uuid import UUID, uuid4
 from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from PIL import Image, UnidentifiedImageError
+from pillow_heif import register_heif_opener
 from pydantic import BaseModel, Field
 
 from mymegi.config import get_settings
@@ -21,6 +24,8 @@ from mymegi.ocr import OcrError, render_oriented_preview, run_tesseract_ocr
 APP_DIR = Path(__file__).resolve().parent
 WEB_DIR = APP_DIR / "web"
 STATIC_DIR = WEB_DIR / "static"
+
+register_heif_opener()
 
 
 def json_object(value: Any) -> dict[str, Any]:
@@ -81,10 +86,18 @@ def clean_list(values: list[str]) -> list[str]:
 
 ALLOWED_UPLOAD_TYPES = {
     "image/jpeg": ".jpg",
+    "image/pjpeg": ".jpg",
     "image/png": ".png",
     "image/webp": ".webp",
+    "image/heic": ".heic",
+    "image/heif": ".heif",
+    "image/heic-sequence": ".heic",
+    "image/heif-sequence": ".heif",
     "application/pdf": ".pdf",
 }
+
+HEIF_UPLOAD_TYPES = {"image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"}
+SUPPORTED_UPLOAD_LABEL = "JPG, PNG, WEBP, HEIC, HEIF, PDF"
 
 
 def side_text_stats(text: str) -> dict[str, int]:
@@ -93,6 +106,38 @@ def side_text_stats(text: str) -> dict[str, int]:
         "latin": sum(1 for char in text if "A" <= char <= "z"),
         "digits": sum(1 for char in text if char.isdigit()),
     }
+
+
+def normalize_upload_content(
+    content: bytes,
+    content_type: str | None,
+    filename: str | None,
+    label: str,
+) -> tuple[bytes, str, str]:
+    if content_type not in ALLOWED_UPLOAD_TYPES:
+        raise HTTPException(
+            status_code=415,
+            detail=(
+                f"Unsupported {label} file type: {content_type or 'unknown'}. "
+                f"Supported types: {SUPPORTED_UPLOAD_LABEL}"
+            ),
+        )
+    if content_type not in HEIF_UPLOAD_TYPES:
+        return content, content_type, ALLOWED_UPLOAD_TYPES[content_type]
+
+    try:
+        with Image.open(BytesIO(content)) as image:
+            image = image.convert("RGB")
+            output = BytesIO()
+            image.save(output, format="JPEG", quality=95)
+    except (UnidentifiedImageError, OSError) as exc:
+        name = f" ({filename})" if filename else ""
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not decode {label} HEIC/HEIF image{name}. Please try exporting it as JPG.",
+        ) from exc
+
+    return output.getvalue(), "image/jpeg", ".jpg"
 
 
 def detect_card_sides(front_text: str, back_text: str | None) -> dict[str, Any]:
@@ -711,11 +756,6 @@ async def upload_card(
 ) -> dict[str, Any]:
     settings = get_settings()
 
-    if file.content_type not in ALLOWED_UPLOAD_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported file type")
-    if back_file and back_file.content_type not in ALLOWED_UPLOAD_TYPES:
-        raise HTTPException(status_code=415, detail="Unsupported back file type")
-
     content = await file.read()
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
@@ -728,9 +768,29 @@ async def upload_card(
     if back_content and len(back_content) > max_bytes:
         raise HTTPException(status_code=413, detail="Uploaded back file is too large")
 
+    content, content_type, suffix = normalize_upload_content(
+        content,
+        file.content_type,
+        file.filename,
+        "front",
+    )
+    if back_file and back_content:
+        back_content, back_content_type, back_suffix = normalize_upload_content(
+            back_content,
+            back_file.content_type,
+            back_file.filename,
+            "back",
+        )
+    else:
+        back_content_type = None
+        back_suffix = None
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail="Uploaded file is too large after HEIC conversion")
+    if back_content and len(back_content) > max_bytes:
+        raise HTTPException(status_code=413, detail="Uploaded back file is too large after HEIC conversion")
+
     card_id = uuid4()
     checksum = sha256(content).hexdigest()
-    suffix = ALLOWED_UPLOAD_TYPES[file.content_type]
     safe_name = f"{card_id}{suffix}"
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     storage_path = settings.upload_dir / safe_name
@@ -738,9 +798,8 @@ async def upload_card(
     back_checksum = None
     back_storage_path = None
     back_safe_name = None
-    if back_file and back_content:
+    if back_file and back_content and back_suffix:
         back_checksum = sha256(back_content).hexdigest()
-        back_suffix = ALLOWED_UPLOAD_TYPES[back_file.content_type]
         back_safe_name = f"{card_id}-back{back_suffix}"
         back_storage_path = settings.upload_dir / back_safe_name
         back_storage_path.write_bytes(back_content)
@@ -763,12 +822,12 @@ async def upload_card(
             card_id,
             file.filename or safe_name,
             str(storage_path),
-            file.content_type,
+            content_type,
             len(content),
             checksum,
             back_file.filename if back_file else None,
             str(back_storage_path) if back_storage_path else None,
-            back_file.content_type if back_file else None,
+            back_content_type,
             len(back_content) if back_content else None,
             back_checksum,
             settings.ocr_engine,
