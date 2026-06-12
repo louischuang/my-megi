@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>My Megi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-contacts" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-workspace-tabs" />
   </head>
   <body>
     <header class="topbar">
@@ -30,31 +30,33 @@
           <strong id="metric-pending">0</strong>
         </article>
       </section>
-      <nav aria-label="Primary">
-        <a href="#upload">上傳</a>
-        <a href="#contacts" id="open-contacts">聯絡人</a>
-        <a href="/docs">API</a>
+      <nav aria-label="Primary" class="top-actions">
+        <button class="nav-icon is-active" type="button" data-main-tab="upload" title="上傳" aria-label="上傳">⇧</button>
+        <button class="nav-icon" type="button" data-main-tab="contacts" title="聯絡人" aria-label="聯絡人">人</button>
+        <a class="nav-icon" href="/docs" title="API" aria-label="API">{}</a>
       </nav>
     </header>
 
     <main>
-      <section class="workspace">
+      <section class="workspace main-panel" id="upload-panel" data-main-panel="upload">
         <div class="panel upload-panel" id="upload">
           <div class="panel-title">
             <h2>名片上傳</h2>
             <span id="upload-state">待命</span>
           </div>
           <form id="upload-form">
-            <label class="file-drop">
-              <input id="card-file" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/heic-sequence,image/heif-sequence,application/pdf" required />
-              <span class="file-title">選擇名片正面</span>
-              <span class="file-meta" id="file-meta">JPG、PNG、WEBP、HEIC、HEIF、PDF，最大 20MB</span>
-            </label>
-            <label class="file-drop secondary-drop">
-              <input id="card-back-file" name="backFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/heic-sequence,image/heif-sequence,application/pdf" />
-              <span class="file-title">選擇名片背面</span>
-              <span class="file-meta" id="back-file-meta">選填，最多再加一張</span>
-            </label>
+            <div class="file-row">
+              <label class="file-drop" data-drop-zone="front">
+                <input id="card-file" name="file" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/heic-sequence,image/heif-sequence,application/pdf" required />
+                <span class="file-title">選擇名片正面</span>
+                <span class="file-meta" id="file-meta">JPG、PNG、WEBP、HEIC、HEIF、PDF，最大 20MB</span>
+              </label>
+              <label class="file-drop secondary-drop" data-drop-zone="back">
+                <input id="card-back-file" name="backFile" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,image/heic-sequence,image/heif-sequence,application/pdf" />
+                <span class="file-title">選擇名片背面</span>
+                <span class="file-meta" id="back-file-meta">選填，最多再加一張</span>
+              </label>
+            </div>
 
             <div class="field-grid">
               <label>
@@ -72,7 +74,7 @@
               <textarea name="note" rows="4" placeholder="由誰介紹、聊了什麼、下一步"></textarea>
             </label>
 
-            <button type="submit">上傳名片</button>
+            <button type="submit" id="upload-submit">上傳名片</button>
           </form>
         </div>
 
@@ -86,6 +88,36 @@
             <button class="tab" type="button" role="tab" aria-selected="false" data-card-tab="completed">已審核</button>
           </div>
           <div class="list" id="cards-list"></div>
+        </div>
+      </section>
+
+      <section class="main-panel" id="contacts-panel" data-main-panel="contacts" hidden>
+        <div class="panel contacts-panel" id="contacts">
+          <div class="panel-title">
+            <h2 id="contacts-title">聯絡人</h2>
+            <form class="search" id="contact-search">
+              <input name="q" type="search" placeholder="搜尋姓名、公司、Email、電話" />
+              <input name="companyClassification" type="search" placeholder="公司分類" />
+              <input name="regionClassification" type="search" placeholder="地區分類" />
+              <input name="industryClassification" type="search" placeholder="產業分類" />
+              <button type="submit">搜尋</button>
+            </form>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>姓名</th>
+                  <th>公司</th>
+                  <th>職稱</th>
+                  <th>分類</th>
+                  <th>建立時間</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="contacts-body"></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </main>
@@ -223,38 +255,6 @@
       </section>
     </div>
 
-    <div class="modal" id="contacts-modal" hidden>
-      <div class="modal-backdrop" data-close-modal="contacts"></div>
-      <section class="panel contacts-panel modal-panel" id="contacts" role="dialog" aria-modal="true" aria-labelledby="contacts-title">
-        <div class="panel-title">
-          <h2 id="contacts-title">聯絡人</h2>
-          <form class="search" id="contact-search">
-            <input name="q" type="search" placeholder="搜尋姓名、公司、Email、電話" />
-            <input name="companyClassification" type="search" placeholder="公司分類" />
-            <input name="regionClassification" type="search" placeholder="地區分類" />
-            <input name="industryClassification" type="search" placeholder="產業分類" />
-            <button type="submit">搜尋</button>
-          </form>
-          <button class="ghost compact" type="button" data-close-modal="contacts">關閉</button>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>姓名</th>
-                <th>公司</th>
-                <th>職稱</th>
-                <th>分類</th>
-                <th>建立時間</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody id="contacts-body"></tbody>
-          </table>
-        </div>
-      </section>
-    </div>
-
     <div class="modal" id="contact-detail-modal" hidden>
       <div class="modal-backdrop" data-close-modal="contact-detail"></div>
       <section class="panel contact-detail-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="contact-detail-title">
@@ -266,6 +266,12 @@
       </section>
     </div>
 
-    <script src="/static/app.js?v=20260612-contacts" type="module"></script>
+    <div class="toast" id="upload-toast" hidden>
+      <button class="toast-close" type="button" id="upload-toast-close" title="關閉" aria-label="關閉">×</button>
+      <strong>已完成上傳與辨識</strong>
+      <span id="upload-toast-message">辨識度 未評估</span>
+    </div>
+
+    <script src="/static/app.js?v=20260612-workspace-tabs" type="module"></script>
   </body>
 </html>

@@ -5,6 +5,7 @@ const state = {
   industryClassification: "",
   selectedCardId: null,
   cardReviewTab: "pending",
+  toastTimer: null,
 };
 
 const formatDate = (value) => {
@@ -103,6 +104,46 @@ function closeModal(name) {
 function detailValue(value) {
   const text = Array.isArray(value) ? value.filter(Boolean).join(", ") : value;
   return escapeHtml(text || "未填寫");
+}
+
+function showMainTab(name) {
+  document.querySelectorAll("[data-main-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.mainPanel !== name;
+  });
+  document.querySelectorAll("[data-main-tab]").forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.mainTab === name);
+  });
+  if (name === "contacts") {
+    loadContacts().catch((error) => console.error(error));
+  }
+}
+
+function setUploadBusy(isBusy) {
+  const panel = document.querySelector("#upload");
+  const form = document.querySelector("#upload-form");
+  panel.classList.toggle("is-uploading", isBusy);
+  form.querySelectorAll("input, textarea, button").forEach((control) => {
+    control.disabled = isBusy;
+  });
+}
+
+function showUploadToast(confidence) {
+  const toast = document.querySelector("#upload-toast");
+  const message = document.querySelector("#upload-toast-message");
+  message.textContent = `辨識度 ${percentText(confidence)}`;
+  toast.hidden = false;
+  window.clearTimeout(state.toastTimer);
+  state.toastTimer = window.setTimeout(() => {
+    toast.hidden = true;
+  }, 5000);
+}
+
+function assignDroppedFile(input, files) {
+  if (!files?.length) return;
+  const transfer = new DataTransfer();
+  transfer.items.add(files[0]);
+  input.files = transfer.files;
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 async function loadDashboard() {
@@ -328,9 +369,8 @@ async function loadContacts() {
     .join("");
 }
 
-async function openContactsModal() {
-  await loadContacts();
-  openModal("contacts");
+async function openContactsPanel() {
+  showMainTab("contacts");
 }
 
 function renderContactDetail(contact) {
@@ -419,6 +459,22 @@ document.querySelector("#card-back-file").addEventListener("change", (event) => 
     : "選填，最多再加一張";
 });
 
+document.querySelectorAll("[data-drop-zone]").forEach((zone) => {
+  const input = zone.querySelector("input[type='file']");
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    zone.classList.add("is-dragging");
+  });
+  zone.addEventListener("dragleave", () => {
+    zone.classList.remove("is-dragging");
+  });
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    zone.classList.remove("is-dragging");
+    assignDroppedFile(input, event.dataTransfer.files);
+  });
+});
+
 document.querySelector("#upload-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -426,6 +482,7 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
   status.textContent = "上傳與辨識中";
   try {
     const formData = new FormData(form);
+    setUploadBusy(true);
     const backFile = formData.get("backFile");
     if (backFile instanceof File && !backFile.name) {
       formData.delete("backFile");
@@ -438,13 +495,13 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
     document.querySelector("#file-meta").textContent = "JPG、PNG、WEBP、HEIC、HEIF、PDF，最大 20MB";
     document.querySelector("#back-file-meta").textContent = "選填，最多再加一張";
     status.textContent = result.status === "needs_review" ? "待審核" : result.status;
+    showUploadToast(result.processing?.structure?.draft?.confidence ?? null);
     await refreshAll();
-    if (result.cardId) {
-      await reviewCard(result.cardId);
-    }
   } catch (error) {
     status.textContent = error.message ? `失敗：${error.message}` : "失敗";
     console.error(error);
+  } finally {
+    setUploadBusy(false);
   }
 });
 
@@ -466,17 +523,15 @@ document.querySelectorAll("[data-close-modal]").forEach((button) => {
   button.addEventListener("click", () => closeModal(button.dataset.closeModal));
 });
 
-document.addEventListener("click", async (event) => {
-  const contactsButton = event.target.closest("#open-contacts");
-  if (!contactsButton) return;
-  event.preventDefault();
-  await openContactsModal();
+document.addEventListener("click", (event) => {
+  const tabButton = event.target.closest("[data-main-tab]");
+  if (!tabButton) return;
+  showMainTab(tabButton.dataset.mainTab);
 });
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   closeModal("review");
-  closeModal("contacts");
   closeModal("contact-detail");
 });
 
@@ -533,8 +588,13 @@ document.querySelector("#contacts-body").addEventListener("click", async (event)
   }
 });
 
+document.querySelector("#upload-toast-close").addEventListener("click", () => {
+  document.querySelector("#upload-toast").hidden = true;
+  window.clearTimeout(state.toastTimer);
+});
+
 if (window.location.hash === "#contacts") {
-  openContactsModal().catch((error) => console.error(error));
+  openContactsPanel().catch((error) => console.error(error));
 }
 
 refreshAll().catch((error) => {
