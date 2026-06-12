@@ -19,14 +19,14 @@
 
 角色：
 
-- `system_admin`: 系統管理員，只能存取用戶管理與 Logo 紀錄。
+- `system_admin`: 系統管理員，只能存取用戶管理。
 - `content_admin`: 內容管理員，可存取所有用戶的名片與聯絡人。
 - `user`: 一般用戶，只能存取自己的名片與聯絡人。
 
 權限規則：
 
 - 未登入：只能呼叫登入、health、必要的靜態資產。
-- 系統管理員：可管理使用者與檢視 Logo 紀錄，不可讀取名片、聯絡人、OCR/LLM 結果。
+- 系統管理員：可管理使用者，不可讀取名片、聯絡人、OCR/LLM 結果。
 - 內容管理員：可讀取與管理所有 owner 的名片、聯絡人與審核流程。
 - 用戶：只可讀取與管理 `ownerUserId` 等於自己的資料。
 
@@ -283,14 +283,6 @@ Purpose: revoke the current user's active token.
 `POST /api/users/{userId}/enable`
 
 Purpose: enable a disabled user account.
-
-### Logo Records
-
-System admin only.
-
-`GET /api/logo-records`
-
-Purpose: list logo changes and active logo metadata.
 
 ### Upload Card
 

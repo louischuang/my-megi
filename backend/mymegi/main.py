@@ -956,37 +956,6 @@ async def enable_user(
     return await update_user(user_id, UserUpdateRequest(status="active"), actor)
 
 
-@app.get("/api/logo-records")
-async def list_logo_records(
-    user: dict[str, Any] = Depends(require_roles("system_admin")),
-) -> dict[str, Any]:
-    async with database.acquire() as connection:
-        rows = await connection.fetch(
-            """
-            select lr.id, lr.file_name, lr.storage_path, lr.version_label, lr.is_active,
-                   lr.created_at, u.display_name as created_by
-            from logo_records lr
-            left join users u on u.id = lr.created_by_user_id
-            order by lr.created_at desc
-            limit 100
-            """
-        )
-    return {
-        "items": [
-            {
-                "id": str(row["id"]),
-                "fileName": row["file_name"],
-                "storagePath": row["storage_path"],
-                "versionLabel": row["version_label"],
-                "isActive": row["is_active"],
-                "createdBy": row["created_by"],
-                "createdAt": row["created_at"].isoformat(),
-            }
-            for row in rows
-        ]
-    }
-
-
 @app.get("/api/dashboard")
 async def dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     ensure_not_system_admin(user)

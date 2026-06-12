@@ -2,7 +2,7 @@
 
 My Megi MVP 使用 PostgreSQL/Postgres 作為主要資料庫。schema 目標是保存名片原始資料、OCR/LLM 中間結果、人工確認後的人脈資料，以及公司、地區、產業與自訂標籤分類。
 
-多人 MVP 在此 schema 上增加使用者、角色、登入 session、API Access Token 與資料 owner 欄位，讓一般用戶只能存取自己的名片與聯絡人，內容管理員可查詢所有資料，系統管理員只存取用戶管理與 Logo 紀錄。
+多人 MVP 在此 schema 上增加使用者、角色、登入 session、API Access Token 與資料 owner 欄位，讓一般用戶只能存取自己的名片與聯絡人，內容管理員可查詢所有資料，系統管理員只存取用戶管理。
 
 如果「PostageDB」指的是其他資料庫產品，請先調整本文件中的 PostgreSQL-specific 設計，例如 `uuid`、`jsonb`、GIN index 與 extension。
 
@@ -37,7 +37,6 @@ create extension if not exists citext;
 - `user_roles`: 使用者與角色關聯。
 - `auth_sessions`: 登入 session、過期與撤銷狀態。
 - `api_access_tokens`: 用戶與內容管理員的 API Access Token hash 與狀態。
-- `logo_records`: Logo 圖檔版本與啟用紀錄。
 
 ## Auth and RBAC Tables
 
@@ -78,7 +77,7 @@ Seed values:
 
 ```sql
 insert into roles (code, name, description) values
-  ('system_admin', 'System Administrator', 'Can manage users and view logo records only.'),
+  ('system_admin', 'System Administrator', 'Can manage users only.'),
   ('content_admin', 'Content Administrator', 'Can view and manage all business cards and contacts.'),
   ('user', 'User', 'Can view and manage owned business cards and contacts only.')
 on conflict (code) do nothing;
@@ -146,26 +145,7 @@ create index api_access_tokens_created_at_idx on api_access_tokens (created_at d
 
 API Access Token 明文只在建立時回傳一次。資料庫只保存 hash 與 prefix，並用 partial unique index 保證每個使用者最多一組 active token。
 
-### logo_records
-
-```sql
-create table logo_records (
-  id uuid primary key default gen_random_uuid(),
-  file_name text not null,
-  storage_path text not null,
-  checksum_sha256 text,
-  version_label text,
-  is_active boolean not null default false,
-  created_by_user_id uuid references users(id) on delete set null,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-create index logo_records_created_at_idx on logo_records (created_at desc);
-create index logo_records_active_idx on logo_records (is_active) where is_active;
-```
-
-系統管理員只能讀取 `users`、`roles`、`user_roles`、`auth_sessions` 的管理資訊與 `logo_records`。後端 API 必須避免系統管理員角色讀取名片、聯絡人與 OCR/LLM 內容。
+系統管理員只能讀取 `users`、`roles`、`user_roles`、`auth_sessions` 的管理資訊。後端 API 必須避免系統管理員角色讀取名片、聯絡人與 OCR/LLM 內容。
 
 ## Core Tables
 
@@ -506,6 +486,5 @@ MVP 重複資料判斷順序：
 9. classification_types and classifications。
 10. contact_classifications。
 11. tags and contact_tags。
-12. logo_records。
-13. audit_logs。
-14. indexes and seed data。
+12. audit_logs。
+13. indexes and seed data。

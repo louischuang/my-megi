@@ -672,31 +672,9 @@ async function loadUsers() {
     .join("");
 }
 
-async function loadLogoRecords() {
-  const data = await fetchJson("/api/logo-records");
-  const list = document.querySelector("#logo-records-list");
-  if (!data.items.length) {
-    list.innerHTML = `<div class="empty">尚無 Logo 紀錄</div>`;
-    return;
-  }
-  list.innerHTML = data.items
-    .map(
-      (item) => `
-      <article class="list-item">
-        <div class="item-header">
-          <span class="badge">${item.isActive ? "啟用" : "紀錄"}</span>
-          <strong>${escapeHtml(item.fileName)}</strong>
-        </div>
-        <small>${escapeHtml(item.versionLabel || "")} ${escapeHtml(formatDate(item.createdAt))}</small>
-      </article>
-    `,
-    )
-    .join("");
-}
-
 async function refreshAdmin() {
   if (!isSystemAdmin()) return;
-  await Promise.all([loadUsers(), loadLogoRecords()]);
+  await loadUsers();
 }
 
 async function refreshAll() {

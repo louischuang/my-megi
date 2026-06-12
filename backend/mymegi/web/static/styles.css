@@ -341,18 +341,6 @@ textarea {
   resize: vertical;
 }
 
-.admin-grid {
-  display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(280px, 0.7fr);
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.admin-grid h3 {
-  margin: 0 0 10px;
-  font-size: 15px;
-}
-
 .field-grid {
   display: grid;
   grid-template-columns: 1fr 170px;
@@ -933,7 +921,6 @@ th {
   .field-grid,
   .field-grid.three,
   .token-grid,
-  .admin-grid,
   .detail-grid,
   .review-workbench,
   .search {

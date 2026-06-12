@@ -8,7 +8,7 @@
 - 每筆名片、聯絡人與互動紀錄都要有清楚的 owner。
 - 一般用戶只能看到自己的名片與聯絡人。
 - 內容管理員可以看到所有用戶的名片與聯絡人。
-- 系統管理員只能看到用戶管理與 Logo 紀錄，不可看到名片與聯絡人內容。
+- 系統管理員只能看到用戶管理，不可看到名片與聯絡人內容。
 - Web UI 與 API 使用同一套後端權限檢查。
 
 ## Roles
@@ -20,7 +20,6 @@
 - 使用者列表。
 - 建立、啟用、停用使用者。
 - 調整使用者角色。
-- 檢視 Logo 紀錄。
 
 不可使用：
 
@@ -40,7 +39,7 @@
 限制：
 
 - 不可管理使用者。
-- 不可修改 Logo 紀錄，除非之後另行授權。
+- 不可管理使用者。
 
 ### user
 
@@ -54,7 +53,6 @@
 
 - 其他使用者的名片與聯絡人。
 - 使用者管理。
-- Logo 紀錄。
 
 ## Authentication Model
 
@@ -97,7 +95,7 @@ Phase 10 採用 server-side session cookie，並讓登入 API 同時回傳短效
 - 新增登入頁。
 - Top Banner 增加目前使用者與登出按鈕。
 - 根據角色顯示不同 tab：
-  - `system_admin`: 用戶管理、Logo 紀錄。
+  - `system_admin`: 用戶管理。
   - `content_admin`: 上傳、最近匯入、聯絡人、API。
   - `user`: 上傳、最近匯入、聯絡人、API。
 - 未登入開啟主要頁面時導向登入頁。
@@ -115,7 +113,6 @@ Phase 10 採用 server-side session cookie，並讓登入 API 同時回傳短效
 - `PATCH /api/users/{userId}`
 - `POST /api/users/{userId}/disable`
 - `POST /api/users/{userId}/enable`
-- `GET /api/logo-records`
 
 既有端點需套用權限：
 
@@ -128,12 +125,13 @@ Phase 10 採用 server-side session cookie，並讓登入 API 同時回傳短效
 
 Phase 10 使用 `migrations/005_auth_rbac.sql`：
 
-1. 新增 `users`、`roles`、`user_roles`、`auth_sessions`、`logo_records`.
+1. 新增 `users`、`roles`、`user_roles`、`auth_sessions`.
 2. 新增 `owner_user_id` 到 `business_cards`、`contacts`、`relationship_notes`.
 3. 啟動時建立 bootstrap system admin。
 4. 啟動時將既有無 owner 資料指派給 bootstrap admin。
 5. 更新查詢與寫入 API，套用 owner 與角色。
 6. 更新 Web UI 導覽與登入/登出流程。
+7. `logo_records` 原本只有空列表，沒有實際 Logo 工作流，已由 `migrations/007_drop_logo_records.sql` 移除。
 
 ## Testing Requirements
 

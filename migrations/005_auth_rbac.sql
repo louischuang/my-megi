@@ -24,7 +24,7 @@ create table if not exists roles (
 );
 
 insert into roles (code, name, description) values
-  ('system_admin', 'System Administrator', 'Can manage users and view logo records only.'),
+  ('system_admin', 'System Administrator', 'Can manage users only.'),
   ('content_admin', 'Content Administrator', 'Can view and manage all business cards and contacts.'),
   ('user', 'User', 'Can view and manage owned business cards and contacts only.')
 on conflict (code) do update
@@ -53,21 +53,6 @@ create table if not exists auth_sessions (
 
 create index if not exists auth_sessions_user_id_idx on auth_sessions (user_id);
 create index if not exists auth_sessions_expires_at_idx on auth_sessions (expires_at);
-
-create table if not exists logo_records (
-  id uuid primary key default gen_random_uuid(),
-  file_name text not null,
-  storage_path text not null,
-  checksum_sha256 text,
-  version_label text,
-  is_active boolean not null default false,
-  created_by_user_id uuid references users(id) on delete set null,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists logo_records_created_at_idx on logo_records (created_at desc);
-create index if not exists logo_records_active_idx on logo_records (is_active) where is_active;
 
 alter table business_cards
   add column if not exists owner_user_id uuid references users(id) on delete restrict;
