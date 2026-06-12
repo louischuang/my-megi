@@ -69,6 +69,13 @@ const statusText = (value) =>
     failed: "失敗",
     done: "已辨識",
   })[value] || value || "未知";
+const recognitionText = (value) =>
+  ({
+    done: "辨識成功",
+    failed: "辨識失敗",
+    processing: "辨識中",
+    pending: "待辨識",
+  })[value] || `辨識 ${statusText(value)}`;
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -194,7 +201,7 @@ async function loadCards() {
             <div class="item-meta">
               <span>${escapeHtml(formatDate(item.createdAt))}</span>
               <span>信心度 ${escapeHtml(percentText(item.confidence))}</span>
-              <span>辨識 ${escapeHtml(statusText(item.recognitionStatus))}</span>
+              <span>${escapeHtml(recognitionText(item.recognitionStatus))}</span>
             </div>
             <div class="item-actions">
               <button class="ghost compact icon-button" type="button" data-extract-card="${escapeHtml(item.id)}" title="重新辨識" aria-label="重新辨識">
