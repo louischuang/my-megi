@@ -137,7 +137,7 @@
 
 - [x] Web UI 搜尋。
 - [x] API 搜尋。
-- [ ] CLI 搜尋。
+- [x] CLI 搜尋。
 - [x] 聯絡人詳情頁。
 
 驗證方式：
@@ -148,10 +148,10 @@
 
 - [x] Swagger UI。
 - [x] OpenAPI JSON 匯出。
-- [ ] CLI `upload`。
-- [ ] CLI `contacts search`。
-- [ ] CLI `contacts show`。
-- [ ] CLI `notes add`。
+- [x] CLI `upload`。
+- [x] CLI `contacts search`。
+- [x] CLI `contacts show`。
+- [x] CLI `notes add`。
 
 驗證方式：
 

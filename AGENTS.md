@@ -71,6 +71,7 @@ My Megi 是本地優先的名片與人脈資料庫。系統需要支援名片上
 - 上傳檔案與資料庫必須使用 volume 保存。
 - Ollama 可作為 compose service，也可連接 host 上既有服務。
 - `.env.example` 不得包含真實 secret。
+- build container image 時，除非有明確必要，不要使用 `--no-cache`；優先使用 Docker cache，只重建受修改影響的 layer。
 
 ## Git 與驗證節奏
 
@@ -79,8 +80,9 @@ My Megi 是本地優先的名片與人脈資料庫。系統需要支援名片上
 1. 執行該階段能執行的檢查。
 2. 更新 `README.md`、`MVP.md`、`TODO.md` 或其他相關文件。
 3. 檢查 `git diff`，確保沒有不相關修改。
-4. commit。
-5. push。
+4. push 前必須先增加一個新的版號，並同步更新所有版號來源與顯示位置。
+5. commit。
+6. push。
 
 commit message 建議格式：
 
@@ -98,4 +100,3 @@ feat: add ollama extraction
 - 不要新增與需求無關的大型框架或服務。
 - 不要在沒有 migration 的情況下修改資料庫 schema。
 - 不要在未確認驗收方式前標記 TODO 完成。
-

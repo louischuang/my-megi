@@ -428,6 +428,32 @@ Response `200`:
 
 Response `201`: Relationship Note resource.
 
+Request:
+
+```json
+{
+  "summary": "Promised to send deployment notes",
+  "metAt": "Follow-up call",
+  "metOn": "2026-06-10",
+  "nextAction": "Send product deck",
+  "nextActionDueOn": "2026-06-12"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "id": "note_123",
+  "contactId": "contact_123",
+  "metAt": "Follow-up call",
+  "metOn": "2026-06-10",
+  "summary": "Promised to send deployment notes",
+  "nextAction": "Send product deck",
+  "nextActionDueOn": "2026-06-12"
+}
+```
+
 ### Classifications
 
 `GET /api/classifications`
@@ -451,6 +477,13 @@ CLI 名稱建議為 `mymegi`。
 ```bash
 mymegi config set server http://localhost:3000
 mymegi config set token YOUR_API_TOKEN
+```
+
+目前 CLI 可先透過環境變數設定：
+
+```bash
+export MYMEGI_API_URL=http://localhost:8000
+export MYMEGI_API_TOKEN=YOUR_API_TOKEN
 ```
 
 單人 MVP 若尚未實作 authentication，可先省略 token。多人 MVP 需要 CLI 支援登入或 token 設定，並在每次 request 帶上 credentials。

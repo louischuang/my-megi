@@ -226,6 +226,14 @@ class ConfirmCardRequest(BaseModel):
 ContactUpdateRequest = ConfirmCardRequest
 
 
+class RelationshipNoteRequest(BaseModel):
+    metAt: str | None = None
+    metOn: str | None = None
+    summary: str
+    nextAction: str | None = None
+    nextActionDueOn: str | None = None
+
+
 async def upsert_company(connection: Any, payload: ConfirmCardRequest) -> UUID | None:
     company_name = clean_text(payload.company.name) or clean_text(payload.company.englishName)
     normalized_company = normalize_lookup(company_name) if company_name else None
@@ -1504,6 +1512,71 @@ async def delete_contact(contact_id: UUID) -> dict[str, Any]:
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Contact not found")
     return {"id": str(contact_id), "status": "deleted"}
+
+
+@app.post("/api/contacts/{contact_id}/notes", status_code=201)
+async def add_relationship_note(
+    contact_id: UUID,
+    payload: RelationshipNoteRequest = Body(...),
+) -> dict[str, Any]:
+    summary = clean_text(payload.summary)
+    if not summary:
+        raise HTTPException(status_code=422, detail="summary is required")
+    met_on = parse_optional_date(payload.metOn, "metOn")
+    next_action_due_on = parse_optional_date(payload.nextActionDueOn, "nextActionDueOn")
+
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            contact = await connection.fetchrow(
+                """
+                select id, source_business_card_id
+                from contacts
+                where id = $1
+                  and deleted_at is null
+                """,
+                contact_id,
+            )
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+
+            note_id = await connection.fetchval(
+                """
+                insert into relationship_notes (
+                  contact_id, business_card_id, met_at, met_on,
+                  summary, next_action, next_action_due_on
+                )
+                values ($1, $2, $3, $4, $5, $6, $7)
+                returning id
+                """,
+                contact_id,
+                contact["source_business_card_id"],
+                clean_text(payload.metAt),
+                met_on,
+                summary,
+                clean_text(payload.nextAction),
+                next_action_due_on,
+            )
+            await connection.execute(
+                """
+                insert into audit_logs (action, entity_type, entity_id, after_data, metadata)
+                values (
+                  'add_relationship_note', 'relationship_note', $1, $2::jsonb, $3::jsonb
+                )
+                """,
+                note_id,
+                json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
+                json.dumps({"contactId": str(contact_id)}, ensure_ascii=False),
+            )
+
+    return {
+        "id": str(note_id),
+        "contactId": str(contact_id),
+        "metAt": clean_text(payload.metAt),
+        "metOn": met_on.isoformat() if met_on else None,
+        "summary": summary,
+        "nextAction": clean_text(payload.nextAction),
+        "nextActionDueOn": next_action_due_on.isoformat() if next_action_due_on else None,
+    }
 
 
 @app.get("/api/classifications")
