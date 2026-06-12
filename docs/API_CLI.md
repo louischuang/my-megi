@@ -241,9 +241,33 @@ Response `200`: Contact resource with notes.
 
 ### Update Contact
 
-`PATCH /api/contacts/{contactId}`
+`PUT /api/contacts/{contactId}`
 
-Response `200`: Contact resource.
+Purpose: update a reviewed contact using the same structured fields as card review.
+
+Response `200`:
+
+```json
+{
+  "contactId": "contact_123",
+  "status": "updated"
+}
+```
+
+### Delete Contact
+
+`DELETE /api/contacts/{contactId}`
+
+Purpose: soft-delete a contact after user confirmation in the Web UI.
+
+Response `200`:
+
+```json
+{
+  "id": "contact_123",
+  "status": "deleted"
+}
+```
 
 ### Add Relationship Note
 

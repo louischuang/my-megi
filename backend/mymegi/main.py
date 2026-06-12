@@ -216,6 +216,9 @@ class ConfirmCardRequest(BaseModel):
     extraNotes: str | None = None
 
 
+ContactUpdateRequest = ConfirmCardRequest
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -1174,7 +1177,11 @@ async def get_contact(contact_id: UUID) -> dict[str, Any]:
               comp.tax_id,
               comp.industry,
               bc.id as business_card_id,
-              bc.original_filename as business_card_file_name
+              bc.original_filename as business_card_file_name,
+              bc.mime_type as business_card_mime_type,
+              bc.back_original_filename as business_card_back_file_name,
+              bc.back_mime_type as business_card_back_mime_type,
+              bc.ocr_text as business_card_ocr_text
             from contacts c
             left join companies comp on comp.id = c.company_id
             left join business_cards bc on bc.id = c.source_business_card_id
@@ -1278,10 +1285,220 @@ async def get_contact(contact_id: UUID) -> dict[str, Any]:
         "businessCard": {
             "id": str(row["business_card_id"]) if row["business_card_id"] else None,
             "fileName": row["business_card_file_name"],
+            "mimeType": row["business_card_mime_type"],
+            "backFileName": row["business_card_back_file_name"],
+            "backMimeType": row["business_card_back_mime_type"],
+            "ocrText": row["business_card_ocr_text"],
+            "imageSides": [
+                side
+                for side in [
+                    {
+                        "side": "front",
+                        "fileName": row["business_card_file_name"],
+                        "mimeType": row["business_card_mime_type"],
+                        "fileUrl": f"/api/cards/{row['business_card_id']}/file?side=front"
+                        if row["business_card_id"]
+                        else None,
+                        "previewUrl": f"/api/cards/{row['business_card_id']}/preview?side=front"
+                        if row["business_card_id"]
+                        else None,
+                    },
+                    {
+                        "side": "back",
+                        "fileName": row["business_card_back_file_name"],
+                        "mimeType": row["business_card_back_mime_type"],
+                        "fileUrl": f"/api/cards/{row['business_card_id']}/file?side=back"
+                        if row["business_card_id"] and row["business_card_back_file_name"]
+                        else None,
+                        "previewUrl": f"/api/cards/{row['business_card_id']}/preview?side=back"
+                        if row["business_card_id"] and row["business_card_back_file_name"]
+                        else None,
+                    },
+                ]
+                if side["fileName"]
+            ],
         },
         "createdAt": row["created_at"].isoformat(),
         "updatedAt": row["updated_at"].isoformat(),
     }
+
+
+@app.put("/api/contacts/{contact_id}")
+async def update_contact(contact_id: UUID, payload: ContactUpdateRequest = Body(...)) -> dict[str, Any]:
+    display_name = clean_text(payload.name)
+    if not display_name:
+        raise HTTPException(status_code=422, detail="name is required")
+
+    met_on = parse_optional_date(payload.metOn, "metOn")
+    company_name = clean_text(payload.company.name) or clean_text(payload.company.englishName)
+    normalized_company = normalize_lookup(company_name) if company_name else None
+
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            existing = await connection.fetchrow(
+                """
+                select id, source_business_card_id
+                from contacts
+                where id = $1
+                  and deleted_at is null
+                for update
+                """,
+                contact_id,
+            )
+            if existing is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+
+            company_id = None
+            if company_name and normalized_company:
+                company_id = await connection.fetchval(
+                    """
+                    insert into companies (
+                      name, normalized_name, english_name, tax_id, website, industry, metadata
+                    )
+                    values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+                    on conflict (normalized_name) do update
+                    set tax_id = coalesce(excluded.tax_id, companies.tax_id),
+                        english_name = coalesce(excluded.english_name, companies.english_name),
+                        website = coalesce(excluded.website, companies.website),
+                        industry = coalesce(excluded.industry, companies.industry),
+                        metadata = companies.metadata || excluded.metadata,
+                        updated_at = now()
+                    returning id
+                    """,
+                    company_name,
+                    normalized_company,
+                    clean_text(payload.company.englishName),
+                    clean_text(payload.company.taxId),
+                    clean_text(payload.website),
+                    clean_text(payload.company.industry),
+                    json.dumps({"englishName": clean_text(payload.company.englishName)}, ensure_ascii=False),
+                )
+
+            await connection.execute(
+                """
+                update contacts
+                set company_id = $2,
+                    display_name = $3,
+                    english_name = $4,
+                    title = $5,
+                    notes = $6,
+                    extra_notes = $7,
+                    metadata = metadata || $8::jsonb,
+                    updated_at = now()
+                where id = $1
+                """,
+                contact_id,
+                company_id,
+                display_name,
+                clean_text(payload.englishName),
+                clean_text(payload.title),
+                clean_text(payload.note),
+                clean_text(payload.extraNotes),
+                json.dumps({"lastManualEdit": payload.model_dump(mode="json")}, ensure_ascii=False),
+            )
+
+            await connection.execute("delete from contact_methods where contact_id = $1", contact_id)
+            methods: list[tuple[str, str]] = []
+            for value in payload.emails:
+                if clean_text(value):
+                    methods.append(("email", clean_text(value) or ""))
+            for value in payload.phones:
+                if clean_text(value):
+                    methods.append(("phone", clean_text(value) or ""))
+            for value in payload.mobiles:
+                if clean_text(value):
+                    methods.append(("mobile", clean_text(value) or ""))
+            for value in payload.fax:
+                if clean_text(value):
+                    methods.append(("other", f"FAX: {clean_text(value)}"))
+            if clean_text(payload.website):
+                methods.append(("website", clean_text(payload.website) or ""))
+
+            for index, (method_type, value) in enumerate(methods):
+                await connection.execute(
+                    """
+                    insert into contact_methods (
+                      contact_id, method_type, value, normalized_value, is_primary
+                    )
+                    values ($1, $2, $3, $4, $5)
+                    """,
+                    contact_id,
+                    method_type,
+                    value,
+                    normalize_lookup(value),
+                    index == 0,
+                )
+
+            await connection.execute("delete from addresses where contact_id = $1", contact_id)
+            if clean_text(payload.address.raw) or clean_text(payload.address.englishRaw):
+                await connection.execute(
+                    """
+                    insert into addresses (
+                      contact_id, company_id, label, country, city, district, raw_address, english_address
+                    )
+                    values ($1, $2, 'business', $3, $4, $5, $6, $7)
+                    """,
+                    contact_id,
+                    company_id,
+                    clean_text(payload.address.country),
+                    clean_text(payload.address.city),
+                    clean_text(payload.address.district),
+                    clean_text(payload.address.raw) or clean_text(payload.address.englishRaw) or "",
+                    clean_text(payload.address.englishRaw),
+                )
+
+            await connection.execute("delete from relationship_notes where contact_id = $1", contact_id)
+            if clean_text(payload.metAt) or met_on or clean_text(payload.note):
+                await connection.execute(
+                    """
+                    insert into relationship_notes (
+                      contact_id, business_card_id, met_at, met_on, summary
+                    )
+                    values ($1, $2, $3, $4, $5)
+                    """,
+                    contact_id,
+                    existing["source_business_card_id"],
+                    clean_text(payload.metAt),
+                    met_on,
+                    clean_text(payload.note),
+                )
+
+            await connection.execute("delete from contact_classifications where contact_id = $1", contact_id)
+            for name in clean_list(payload.classifications.company):
+                await link_contact_classification(connection, contact_id, "company", name)
+            for name in clean_list(payload.classifications.region):
+                await link_contact_classification(connection, contact_id, "region", name)
+            for name in clean_list(payload.classifications.industry):
+                await link_contact_classification(connection, contact_id, "industry", name)
+
+            if existing["source_business_card_id"]:
+                await connection.execute(
+                    """
+                    update business_cards
+                    set extracted_data = $2::jsonb,
+                        extra_notes = $3,
+                        updated_at = now()
+                    where id = $1
+                    """,
+                    existing["source_business_card_id"],
+                    json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
+                    clean_text(payload.extraNotes),
+                )
+
+            await connection.execute(
+                """
+                insert into audit_logs (action, entity_type, entity_id, after_data, metadata)
+                values ('update_contact', 'contact', $1, $2::jsonb, $3::jsonb)
+                """,
+                contact_id,
+                json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
+                json.dumps(
+                    {"businessCardId": str(existing["source_business_card_id"]) if existing["source_business_card_id"] else None},
+                    ensure_ascii=False,
+                ),
+            )
+
+    return {"contactId": str(contact_id), "status": "updated"}
 
 
 @app.delete("/api/contacts/{contact_id}")

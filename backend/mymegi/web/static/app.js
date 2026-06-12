@@ -4,6 +4,7 @@ const state = {
   regionClassification: "",
   industryClassification: "",
   selectedCardId: null,
+  selectedContactId: null,
   cardReviewTab: "pending",
   toastTimer: null,
 };
@@ -155,11 +156,11 @@ async function loadDashboard() {
 }
 
 async function loadVersion() {
-  const versionLabel = document.querySelector("#app-version");
-  if (!versionLabel) return;
   try {
     const data = await fetchJson("/api/version");
-    versionLabel.textContent = `v${data.version}`;
+    document.querySelectorAll("[data-app-version]").forEach((versionLabel) => {
+      versionLabel.textContent = `v${data.version}`;
+    });
   } catch (error) {
     console.error(error);
   }
@@ -239,12 +240,11 @@ function setReviewField(name, value) {
   if (field) field.value = value ?? "";
 }
 
-function renderCardPreview(card) {
-  const preview = document.querySelector("#card-preview");
-  const sides = card.imageSides?.length
-    ? card.imageSides
-    : [{ side: "front", fileName: card.fileName, mimeType: card.mimeType, fileUrl: card.fileUrl, previewUrl: card.previewUrl }];
-  preview.innerHTML = sides
+function cardPreviewHtml(sides) {
+  if (!sides.length) {
+    return `<div class="empty">無法預覽此檔案</div>`;
+  }
+  return sides
     .map((side) => {
       const label = side.side === "back" ? "背面" : "正面";
       if (side.mimeType?.startsWith("image/")) {
@@ -256,18 +256,24 @@ function renderCardPreview(card) {
       return `<figure class="card-preview"><figcaption>${label}</figcaption><div class="empty">無法預覽此檔案</div></figure>`;
     })
     .join("");
-  if (sides.length) {
-    return;
-  }
-  preview.innerHTML = `<div class="empty">無法預覽此檔案</div>`;
+}
+
+function renderCardPreview(card, target = "#card-preview") {
+  const preview = document.querySelector(target);
+  const sides = card.imageSides?.length
+    ? card.imageSides
+    : [{ side: "front", fileName: card.fileName, mimeType: card.mimeType, fileUrl: card.fileUrl, previewUrl: card.previewUrl }];
+  preview.innerHTML = cardPreviewHtml(sides);
 }
 
 async function reviewCard(cardId) {
+  document.querySelector("#review-title").textContent = "名片審核";
   setReviewState("載入中");
   const card = await fetchJson(`/api/cards/${cardId}`);
   const draft = parseDraft(card.extractedData);
   const context = card.uploadContext || {};
   state.selectedCardId = card.id;
+  state.selectedContactId = null;
 
   document.querySelector("#review-empty").hidden = true;
   document.querySelector("#review-workbench").hidden = false;
@@ -275,6 +281,7 @@ async function reviewCard(cardId) {
   renderCardPreview(card);
 
   setReviewField("cardId", card.id);
+  setReviewField("contactId", "");
   setReviewField("name", draft.name);
   setReviewField("englishName", draft.englishName);
   setReviewField("title", draft.title);
@@ -302,6 +309,70 @@ async function reviewCard(cardId) {
   setReviewField("note", context.note || draft.notes);
   setReviewField("extraNotes", card.extraNotes || draft.extraNotes);
   setReviewState(card.status);
+  openModal("review");
+}
+
+function contactMethodValues(contact, type) {
+  return (contact.methods || [])
+    .filter((method) => method.type === type)
+    .map((method) => method.value);
+}
+
+function contactFaxValues(contact) {
+  return (contact.methods || [])
+    .filter((method) => method.type === "other" && /^FAX:/i.test(method.value || ""))
+    .map((method) => method.value.replace(/^FAX:\s*/i, ""));
+}
+
+function firstAddress(contact) {
+  return contact.addresses?.[0] || {};
+}
+
+function firstRelationshipNote(contact) {
+  return contact.relationshipNotes?.[0] || {};
+}
+
+async function editContact(contactId) {
+  closeModal("contact-detail");
+  document.querySelector("#review-title").textContent = "聯絡人編輯";
+  setReviewState("載入中");
+  const contact = await fetchJson(`/api/contacts/${contactId}`);
+  const address = firstAddress(contact);
+  const relationship = firstRelationshipNote(contact);
+  state.selectedCardId = contact.businessCard?.id || null;
+  state.selectedContactId = contact.id;
+
+  document.querySelector("#review-empty").hidden = true;
+  document.querySelector("#review-workbench").hidden = false;
+  document.querySelector("#ocr-text").value = contact.businessCard?.ocrText || "";
+  renderCardPreview({ imageSides: contact.businessCard?.imageSides || [] });
+
+  setReviewField("cardId", contact.businessCard?.id || "");
+  setReviewField("contactId", contact.id);
+  setReviewField("name", contact.name);
+  setReviewField("englishName", contact.englishName);
+  setReviewField("title", contact.title);
+  setReviewField("companyName", contact.company?.name);
+  setReviewField("companyEnglishName", contact.company?.englishName);
+  setReviewField("emails", listValue(contactMethodValues(contact, "email")));
+  setReviewField("mobiles", listValue(contactMethodValues(contact, "mobile")));
+  setReviewField("phones", listValue(contactMethodValues(contact, "phone")));
+  setReviewField("fax", listValue(contactFaxValues(contact)));
+  setReviewField("taxId", contact.company?.taxId);
+  setReviewField("industry", contact.company?.industry);
+  setReviewField("addressRaw", address.raw);
+  setReviewField("addressEnglishRaw", address.english);
+  setReviewField("country", address.country);
+  setReviewField("city", address.city);
+  setReviewField("district", address.district);
+  setReviewField("companyClassifications", listValue(contact.classifications?.company));
+  setReviewField("regionClassifications", listValue(contact.classifications?.region));
+  setReviewField("industryClassifications", listValue(contact.classifications?.industry));
+  setReviewField("metAt", relationship.metAt);
+  setReviewField("metOn", relationship.metOn);
+  setReviewField("note", contact.notes || relationship.summary);
+  setReviewField("extraNotes", contact.extraNotes);
+  setReviewState("編輯中");
   openModal("review");
 }
 
@@ -370,8 +441,12 @@ async function loadContacts() {
           <td>${formatDate(item.createdAt)}</td>
           <td>
             <div class="row-actions">
-              <button class="bare-icon" type="button" data-view-contact="${escapeHtml(item.id)}" title="檢視" aria-label="檢視">⌕</button>
-              <button class="bare-icon danger" type="button" data-delete-contact="${escapeHtml(item.id)}" title="刪除" aria-label="刪除">×</button>
+              <button class="bare-icon" type="button" data-view-contact="${escapeHtml(item.id)}" title="檢視" aria-label="檢視">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 12s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+              </button>
+              <button class="bare-icon danger" type="button" data-delete-contact="${escapeHtml(item.id)}" title="刪除" aria-label="刪除">
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 7h14"/><path d="M9 7V5h6v2"/><path d="m8 10 .5 9h7l.5-9"/><path d="M10.5 12.5v4M13.5 12.5v4"/></svg>
+              </button>
             </div>
           </td>
         </tr>
@@ -437,17 +512,30 @@ function renderContactDetail(contact) {
         <dt>名片額外備註</dt><dd>${detailValue(contact.extraNotes)}</dd>
       </dl>
     </section>
+    ${
+      contact.businessCard?.imageSides?.length
+        ? `<section class="detail-card-section">
+            <h3>原始名片</h3>
+            <div class="card-preview-grid detail-card-preview" id="contact-detail-card-preview"></div>
+          </section>`
+        : ""
+    }
   `;
+  if (contact.businessCard?.imageSides?.length) {
+    renderCardPreview({ imageSides: contact.businessCard.imageSides }, "#contact-detail-card-preview");
+  }
 }
 
 async function viewContact(contactId) {
   const contact = await fetchJson(`/api/contacts/${contactId}`);
+  state.selectedContactId = contact.id;
+  document.querySelector("#contact-edit-button").dataset.editContact = contact.id;
   renderContactDetail(contact);
   openModal("contact-detail");
 }
 
 async function deleteContact(contactId) {
-  if (!window.confirm("確定刪除此聯絡人？")) return;
+  if (!window.confirm("確定刪除此聯絡人？刪除後此筆聯絡人會從列表隱藏。")) return;
   await fetchJson(`/api/contacts/${contactId}`, { method: "DELETE" });
   await refreshAll();
 }
@@ -561,11 +649,14 @@ document.querySelector("#cards-list").addEventListener("click", async (event) =>
 document.querySelector("#review-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
-  const cardId = new FormData(form).get("cardId");
+  const formData = new FormData(form);
+  const cardId = formData.get("cardId");
+  const contactId = formData.get("contactId");
   setReviewState("儲存中");
   try {
-    await fetchJson(`/api/cards/${cardId}/confirm`, {
-      method: "POST",
+    const url = contactId ? `/api/contacts/${contactId}` : `/api/cards/${cardId}/confirm`;
+    await fetchJson(url, {
+      method: contactId ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(reviewPayload(form)),
     });
@@ -575,6 +666,12 @@ document.querySelector("#review-form").addEventListener("submit", async (event) 
     setReviewState("儲存失敗");
     console.error(error);
   }
+});
+
+document.querySelector("#contact-edit-button").addEventListener("click", async (event) => {
+  const contactId = event.currentTarget.dataset.editContact;
+  if (!contactId) return;
+  await editContact(contactId);
 });
 
 document.querySelector("#contact-search").addEventListener("submit", async (event) => {

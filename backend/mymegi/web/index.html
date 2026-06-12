@@ -4,14 +4,14 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>My Megi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-dark-brand" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-contact-edit" />
   </head>
   <body>
     <header class="topbar">
       <div class="brand">
         <div class="brand-lockup" aria-label="My Megi">
           <img class="brand-logo" src="/static/assets/my-megi-logo.svg" alt="My Megi" />
-          <span class="app-version" id="app-version">v0.1.0</span>
+          <span class="app-version" data-app-version>v0.1.0</span>
         </div>
         <p>名片與人脈資料庫</p>
       </div>
@@ -131,6 +131,12 @@
       </section>
     </main>
 
+    <footer class="site-footer">
+      <span>開發者：Louis Chuang</span>
+      <span>Copyright: 2026</span>
+      <span>版本號：<span data-app-version>v0.1.0</span></span>
+    </footer>
+
     <div class="modal" id="review-modal" hidden>
       <div class="modal-backdrop" data-close-modal="review"></div>
       <section class="panel review-panel modal-panel" id="review" role="dialog" aria-modal="true" aria-labelledby="review-title">
@@ -139,7 +145,7 @@
             <h2 id="review-title">名片審核</h2>
             <span id="review-state">未選取</span>
           </div>
-          <button class="ghost compact" type="button" data-close-modal="review">關閉</button>
+            <button class="ghost compact" type="button" data-close-modal="review">關閉</button>
         </div>
         <div class="review-empty" id="review-empty">從最近匯入選擇一張名片進行審核</div>
         <div class="review-workbench" id="review-workbench" hidden>
@@ -152,6 +158,7 @@
           </div>
           <form id="review-form">
             <input name="cardId" type="hidden" />
+            <input name="contactId" type="hidden" />
             <div class="field-grid">
               <label>
                 <span>姓名中文</span>
@@ -269,7 +276,14 @@
       <section class="panel contact-detail-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="contact-detail-title">
         <div class="panel-title">
           <h2 id="contact-detail-title">聯絡人資訊</h2>
-          <button class="ghost compact" type="button" data-close-modal="contact-detail">關閉</button>
+          <div class="modal-actions">
+            <button class="bare-icon" type="button" id="contact-edit-button" title="編輯" aria-label="編輯">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 20 4.4-1 10.1-10.1a2.1 2.1 0 0 0-3-3L5.4 16 4 20Z"/><path d="m14 7 3 3"/></svg>
+            </button>
+            <button class="bare-icon" type="button" data-close-modal="contact-detail" title="關閉" aria-label="關閉">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+          </div>
         </div>
         <div class="detail-grid" id="contact-detail"></div>
       </section>
@@ -281,6 +295,6 @@
       <span id="upload-toast-message">辨識度 未評估</span>
     </div>
 
-    <script src="/static/app.js?v=20260612-dark-brand" type="module"></script>
+    <script src="/static/app.js?v=20260612-contact-edit" type="module"></script>
   </body>
 </html>

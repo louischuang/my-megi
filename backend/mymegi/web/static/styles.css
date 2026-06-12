@@ -164,6 +164,17 @@ main {
   margin: 22px auto 48px;
 }
 
+.site-footer {
+  width: min(1180px, calc(100vw - 32px));
+  margin: -20px auto 28px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .status-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -507,6 +518,16 @@ button.compact {
   line-height: 1;
 }
 
+.bare-icon svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .bare-icon:hover {
   color: var(--accent);
 }
@@ -661,6 +682,12 @@ button.compact {
   width: min(900px, 100%);
 }
 
+.modal-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -672,6 +699,14 @@ button.compact {
   border-radius: 8px;
   padding: 14px;
   background: var(--surface-3);
+}
+
+.detail-card-section {
+  grid-column: 1 / -1;
+}
+
+.detail-card-preview {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .detail-grid h3 {
@@ -718,7 +753,7 @@ td {
 
 th:last-child,
 td:last-child {
-  width: 72px;
+  width: 88px;
   text-align: right;
 }
 
