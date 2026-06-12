@@ -174,7 +174,14 @@ def draft_confidence(draft: dict[str, Any]) -> float:
 
 
 def is_auto_confirmable(draft: dict[str, Any]) -> bool:
-    return draft_confidence(draft) > 0.9 and bool(clean_text(draft.get("name")))
+    return draft_confidence(draft) >= 0.9 and bool(clean_text(draft.get("name")))
+
+
+def auto_confirm_payload(draft: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(draft)
+    if clean_text(payload.get("notes")) and not clean_text(payload.get("note")):
+        payload["note"] = payload["notes"]
+    return payload
 
 
 class CompanyDraft(BaseModel):
@@ -648,7 +655,7 @@ async def process_card_for_review(card_id: UUID) -> dict[str, Any]:
     structure_result = await run_card_structure(card_id)
     draft = structure_result["draft"]
     if is_auto_confirmable(draft):
-        payload = ConfirmCardRequest.model_validate(draft)
+        payload = ConfirmCardRequest.model_validate(auto_confirm_payload(draft))
         confirm_result = await confirm_card(card_id, payload)
         return {
             "cardId": str(card_id),
@@ -871,6 +878,12 @@ async def upload_card(
         "fileName": file.filename or safe_name,
         "backFileName": back_upload.filename if back_upload else None,
         "autoProcessed": process_result is not None,
+        "autoConfirmed": bool(process_result and process_result.get("autoConfirmed")),
+        "confidence": (
+            process_result.get("structure", {}).get("draft", {}).get("confidence")
+            if process_result
+            else None
+        ),
         "processing": process_result,
         "processingError": processing_error,
     }

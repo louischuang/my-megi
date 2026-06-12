@@ -740,6 +740,7 @@ button.compact {
 table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed;
 }
 
 th,
@@ -749,12 +750,42 @@ td {
   border-bottom: 1px solid var(--line);
   text-align: left;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contacts-col-name {
+  width: 17%;
+}
+
+.contacts-col-company {
+  width: 22%;
+}
+
+.contacts-col-title {
+  width: 14%;
+}
+
+.contacts-col-classification {
+  width: 14%;
+}
+
+.contacts-col-date {
+  width: 21%;
+}
+
+.contacts-col-actions {
+  width: 88px;
 }
 
 th:last-child,
 td:last-child {
-  width: 88px;
+  overflow: visible;
   text-align: right;
+}
+
+.classification-cell {
+  max-width: 0;
 }
 
 th {

@@ -59,7 +59,7 @@ const classificationText = (classifications) => {
   return values.length ? values.join(", ") : "";
 };
 const percentText = (value) => (value == null ? "未評估" : `${Math.round(Number(value) * 100)}%`);
-const isAutoReviewed = (item) => item.reviewStatus === "completed" && Number(item.confidence || 0) > 0.9;
+const isAutoReviewed = (item) => item.reviewStatus === "completed" && Number(item.confidence || 0) >= 0.9;
 const statusText = (value) =>
   ({
     completed: "已入庫",
@@ -128,10 +128,10 @@ function setUploadBusy(isBusy) {
   });
 }
 
-function showUploadToast(confidence) {
+function showUploadToast(confidence, autoConfirmed = false) {
   const toast = document.querySelector("#upload-toast");
   const message = document.querySelector("#upload-toast-message");
-  message.textContent = `辨識度 ${percentText(confidence)}`;
+  message.textContent = `${autoConfirmed ? "已自動加入聯絡人，" : ""}辨識度 ${percentText(confidence)}`;
   toast.hidden = false;
   window.clearTimeout(state.toastTimer);
   state.toastTimer = window.setTimeout(() => {
@@ -437,7 +437,7 @@ async function loadContacts() {
           <td>${escapeHtml(item.name)}</td>
           <td>${escapeHtml(item.company)}</td>
           <td>${escapeHtml(item.title)}</td>
-          <td>${escapeHtml(classificationText(item.classifications))}</td>
+          <td class="classification-cell" title="${escapeHtml(classificationText(item.classifications))}">${escapeHtml(classificationText(item.classifications))}</td>
           <td>${formatDate(item.createdAt)}</td>
           <td>
             <div class="row-actions">
@@ -593,8 +593,8 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
     form.reset();
     document.querySelector("#file-meta").textContent = "JPG、PNG、WEBP、HEIC、HEIF、PDF，最大 20MB";
     document.querySelector("#back-file-meta").textContent = "選填，最多再加一張";
-    status.textContent = result.status === "needs_review" ? "待審核" : result.status;
-    showUploadToast(result.processing?.structure?.draft?.confidence ?? null);
+    status.textContent = result.autoConfirmed ? "已自動入庫" : result.status === "needs_review" ? "待審核" : result.status;
+    showUploadToast(result.confidence ?? result.processing?.structure?.draft?.confidence ?? null, result.autoConfirmed);
     await refreshAll();
   } catch (error) {
     status.textContent = error.message ? `失敗：${error.message}` : "失敗";

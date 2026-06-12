@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>My Megi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-contact-edit" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-auto-contact-toast" />
   </head>
   <body>
     <header class="topbar">
@@ -114,6 +114,14 @@
           </div>
           <div class="table-wrap">
             <table>
+              <colgroup>
+                <col class="contacts-col-name" />
+                <col class="contacts-col-company" />
+                <col class="contacts-col-title" />
+                <col class="contacts-col-classification" />
+                <col class="contacts-col-date" />
+                <col class="contacts-col-actions" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>姓名</th>
@@ -295,6 +303,6 @@
       <span id="upload-toast-message">辨識度 未評估</span>
     </div>
 
-    <script src="/static/app.js?v=20260612-contact-edit" type="module"></script>
+    <script src="/static/app.js?v=20260612-auto-contact-toast" type="module"></script>
   </body>
 </html>
