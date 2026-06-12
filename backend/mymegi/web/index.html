@@ -8,18 +8,10 @@
   </head>
   <body>
     <header class="topbar">
-      <div>
+      <div class="brand">
         <h1>My Megi</h1>
         <p>名片與人脈資料庫</p>
       </div>
-      <nav aria-label="Primary">
-        <a href="#upload">上傳</a>
-        <a href="#contacts">聯絡人</a>
-        <a href="/docs">API</a>
-      </nav>
-    </header>
-
-    <main>
       <section class="status-grid" aria-label="Dashboard">
         <article class="metric">
           <span>聯絡人</span>
@@ -38,7 +30,14 @@
           <strong id="metric-pending">0</strong>
         </article>
       </section>
+      <nav aria-label="Primary">
+        <a href="#upload">上傳</a>
+        <button class="ghost" type="button" id="open-contacts">聯絡人</button>
+        <a href="/docs">API</a>
+      </nav>
+    </header>
 
+    <main>
       <section class="workspace">
         <div class="panel upload-panel" id="upload">
           <div class="panel-title">
@@ -85,11 +84,17 @@
           <div class="list" id="cards-list"></div>
         </div>
       </section>
+    </main>
 
-      <section class="panel review-panel" id="review">
+    <div class="modal" id="review-modal" hidden>
+      <div class="modal-backdrop" data-close-modal="review"></div>
+      <section class="panel review-panel modal-panel" id="review" role="dialog" aria-modal="true" aria-labelledby="review-title">
         <div class="panel-title">
-          <h2>名片審核</h2>
-          <span id="review-state">未選取</span>
+          <div>
+            <h2 id="review-title">名片審核</h2>
+            <span id="review-state">未選取</span>
+          </div>
+          <button class="ghost compact" type="button" data-close-modal="review">關閉</button>
         </div>
         <div class="review-empty" id="review-empty">從最近匯入選擇一張名片進行審核</div>
         <div class="review-workbench" id="review-workbench" hidden>
@@ -212,10 +217,13 @@
           </form>
         </div>
       </section>
+    </div>
 
-      <section class="panel contacts-panel" id="contacts">
+    <div class="modal" id="contacts-modal" hidden>
+      <div class="modal-backdrop" data-close-modal="contacts"></div>
+      <section class="panel contacts-panel modal-panel" id="contacts" role="dialog" aria-modal="true" aria-labelledby="contacts-title">
         <div class="panel-title">
-          <h2>聯絡人</h2>
+          <h2 id="contacts-title">聯絡人</h2>
           <form class="search" id="contact-search">
             <input name="q" type="search" placeholder="搜尋姓名、公司、Email、電話" />
             <input name="companyClassification" type="search" placeholder="公司分類" />
@@ -223,6 +231,7 @@
             <input name="industryClassification" type="search" placeholder="產業分類" />
             <button type="submit">搜尋</button>
           </form>
+          <button class="ghost compact" type="button" data-close-modal="contacts">關閉</button>
         </div>
         <div class="table-wrap">
           <table>
@@ -239,7 +248,7 @@
           </table>
         </div>
       </section>
-    </main>
+    </div>
 
     <script src="/static/app.js" type="module"></script>
   </body>

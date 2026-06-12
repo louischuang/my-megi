@@ -82,6 +82,22 @@ async function fetchJson(url, options) {
   return response.json();
 }
 
+function openModal(name) {
+  const modal = document.querySelector(`#${name}-modal`);
+  if (!modal) return;
+  modal.hidden = false;
+  document.body.classList.add("modal-open");
+}
+
+function closeModal(name) {
+  const modal = document.querySelector(`#${name}-modal`);
+  if (!modal) return;
+  modal.hidden = true;
+  if (!document.querySelector(".modal:not([hidden])")) {
+    document.body.classList.remove("modal-open");
+  }
+}
+
 async function loadDashboard() {
   const data = await fetchJson("/api/dashboard");
   document.querySelector("#metric-contacts").textContent = data.contacts;
@@ -223,7 +239,7 @@ async function reviewCard(cardId) {
   setReviewField("note", context.note || draft.notes);
   setReviewField("extraNotes", card.extraNotes || draft.extraNotes);
   setReviewState(card.status);
-  document.querySelector("#review").scrollIntoView({ behavior: "smooth", block: "start" });
+  openModal("review");
 }
 
 function reviewPayload(form) {
@@ -343,6 +359,21 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
 });
 
 document.querySelector("#refresh-cards").addEventListener("click", loadCards);
+
+document.querySelector("#open-contacts").addEventListener("click", async () => {
+  await loadContacts();
+  openModal("contacts");
+});
+
+document.querySelectorAll("[data-close-modal]").forEach((button) => {
+  button.addEventListener("click", () => closeModal(button.dataset.closeModal));
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  closeModal("review");
+  closeModal("contacts");
+});
 
 document.querySelector("#cards-list").addEventListener("click", async (event) => {
   const extractButton = event.target.closest("[data-extract-card]");

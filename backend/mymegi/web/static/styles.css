@@ -24,14 +24,22 @@ body {
   letter-spacing: 0;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
 .topbar {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(160px, 240px) minmax(360px, 1fr) auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  padding: 22px clamp(20px, 5vw, 56px);
+  gap: 18px;
+  padding: 16px clamp(20px, 4vw, 48px);
   background: #fbfcfc;
   border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  min-width: 0;
 }
 
 h1,
@@ -61,6 +69,7 @@ td {
 
 nav {
   display: flex;
+  justify-content: flex-end;
   gap: 8px;
 }
 
@@ -90,14 +99,15 @@ button.ghost {
 
 main {
   width: min(1180px, calc(100vw - 32px));
-  margin: 28px auto 48px;
+  margin: 22px auto 48px;
 }
 
 .status-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-  margin-bottom: 18px;
+  gap: 8px;
+  justify-self: end;
+  width: min(560px, 100%);
 }
 
 .metric,
@@ -109,15 +119,20 @@ main {
 }
 
 .metric {
-  min-height: 108px;
-  padding: 18px;
+  min-height: 64px;
+  padding: 10px 12px;
   display: grid;
   align-content: space-between;
 }
 
 .metric strong {
-  font-size: 34px;
+  font-size: 24px;
   line-height: 1;
+}
+
+.metric span {
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .metric.attention {
@@ -131,7 +146,7 @@ main {
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 18px;
   align-items: start;
 }
@@ -149,8 +164,11 @@ main {
   margin-bottom: 14px;
 }
 
-.panel-title > span {
+.panel-title > span,
+.panel-title > div > span {
   min-width: 64px;
+  display: inline-block;
+  margin-top: 6px;
   text-align: center;
   border-radius: 999px;
   padding: 4px 10px;
@@ -337,14 +355,6 @@ button.compact {
   line-height: 1;
 }
 
-.contacts-panel {
-  margin-top: 18px;
-}
-
-.review-panel {
-  margin-top: 18px;
-}
-
 .review-empty {
   min-height: 140px;
   display: grid;
@@ -415,6 +425,39 @@ button.compact {
   gap: 8px;
 }
 
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: 24px clamp(14px, 3vw, 36px);
+  overflow-y: auto;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(29 37 40 / 42%);
+}
+
+.modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(1120px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+#contacts.modal-panel {
+  width: min(1040px, 100%);
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -448,13 +491,17 @@ th {
 }
 
 @media (max-width: 840px) {
-  .topbar,
+  .topbar {
+    grid-template-columns: 1fr;
+  }
+
   .panel-title {
     align-items: flex-start;
     flex-direction: column;
   }
 
   nav,
+  .status-grid,
   .search {
     width: 100%;
   }
@@ -465,13 +512,17 @@ th {
     text-align: center;
   }
 
-  .status-grid,
   .workspace,
   .field-grid,
   .field-grid.three,
   .review-workbench,
   .search {
     grid-template-columns: 1fr;
+  }
+
+  .status-grid {
+    justify-self: stretch;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .list-item {
