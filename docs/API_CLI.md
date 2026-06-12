@@ -341,6 +341,24 @@ Request:
 
 Response `201`: Contact resource.
 
+### Confirm Card
+
+`POST /api/cards/{cardId}/confirm`
+
+Purpose: save a reviewed card draft as a contact. If the card already has a linked contact, the same request updates that contact instead of creating another one.
+
+Response `201` for first save or update through the card review flow:
+
+```json
+{
+  "contactId": "contact_123",
+  "cardId": "card_123",
+  "status": "completed"
+}
+```
+
+When the card already has a linked contact, `status` may be `updated` while `contactId` remains the same.
+
 ### Search Contacts
 
 `GET /api/contacts`

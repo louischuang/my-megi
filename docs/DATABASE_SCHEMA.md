@@ -191,9 +191,14 @@ create index contacts_english_name_idx on contacts (english_name);
 create index contacts_company_id_idx on contacts (company_id);
 create index contacts_created_at_idx on contacts (created_at desc);
 create index contacts_metadata_gin_idx on contacts using gin (metadata);
+create unique index contacts_source_business_card_id_unique_idx
+  on contacts (source_business_card_id)
+  where source_business_card_id is not null
+    and deleted_at is null;
 ```
 
 `source_business_card_id` 會在 `business_cards` 建立後加上 foreign key，避免 migration 順序循環。
+同一張名片只能連到一筆未刪除聯絡人；已儲存名片再次確認時應更新既有 contact，而不是新增第二筆。
 
 ### business_cards
 
