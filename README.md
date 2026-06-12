@@ -55,6 +55,7 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 - `audit_logs`: 匯入、修改、合併、刪除紀錄。
 - `users` / `roles`: 登入帳號、狀態、角色與權限。
 - `auth_sessions`: 登入 session、過期時間與撤銷狀態。
+- `api_access_tokens`: 用戶與內容管理員可自助建立的 API Access Token；每個帳號最多一組 active token。
 - `logo_records`: Logo 圖檔、啟用狀態與修改紀錄，提供系統管理員檢視。
 
 詳細 PostgreSQL schema、索引、關聯與 migration 規劃見 [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md)。
@@ -147,6 +148,9 @@ API 會以 OpenAPI/Swagger 文件公開，初期端點包含：
 - `POST /api/auth/login`: 登入並取得 session cookie 與 `sessionToken`。
 - `POST /api/auth/logout`: 登出並撤銷目前 session。
 - `GET /api/me`: 取得目前登入使用者。
+- `GET /api/access-tokens`: 取得目前登入使用者的 API Access Token 列表。
+- `POST /api/access-tokens`: 產生新的 API Access Token，並讓原 active token 過期。
+- `POST /api/access-tokens/{id}/revoke`: 撤銷目前使用者的 API Access Token。
 - `GET /api/users`: 系統管理員使用者列表。
 - `POST /api/cards/upload`: 上傳名片。
 - `GET /api/cards/{id}`: 取得名片處理結果。
@@ -182,8 +186,8 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 - 地區分類若要準確，應導入地址標準化或行政區資料表。
 - Ollama 的 vision 能力取決於安裝模型；不是所有 Ollama 模型都能讀圖。
 - 正式環境若仍使用本地 LLM，需準備 GPU/CPU 資源與模型管理策略。
-- API 若開放第三方服務使用，必須加上正式 API token、rate limit、audit log。
-- 多人使用已完成基本資料擁有者欄位與查詢層權限過濾；後續仍需補正式第三方 API token 與更完整 audit log。
+- API Access Token MVP 已支援用戶與內容管理員自助產生；後續正式環境仍需補 rate limit 與更完整 audit log。
+- 多人使用已完成基本資料擁有者欄位與查詢層權限過濾；後續仍需補備份/還原與部署文件。
 
 ## 已完成：多人與權限 MVP
 
@@ -213,7 +217,7 @@ My Megi 已從單人本地工具擴充為多人可使用的平台。詳細設計
 7. 查詢 UI。
 8. OpenAPI/Swagger 與 CLI。
 9. 多人登入、權限與資料隔離。
-10. 備份、正式環境部署與第三方 API token。
+10. 備份、正式環境部署、rate limit 與完整 audit log。
 
 ## Git 工作規範
 

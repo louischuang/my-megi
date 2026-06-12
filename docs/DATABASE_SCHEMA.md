@@ -2,7 +2,7 @@
 
 My Megi MVP 使用 PostgreSQL/Postgres 作為主要資料庫。schema 目標是保存名片原始資料、OCR/LLM 中間結果、人工確認後的人脈資料，以及公司、地區、產業與自訂標籤分類。
 
-下一階段多人 MVP 會在此 schema 上增加使用者、角色、登入 session 與資料 owner 欄位，讓一般用戶只能存取自己的名片與聯絡人，內容管理員可查詢所有資料，系統管理員只存取用戶管理與 Logo 紀錄。
+多人 MVP 在此 schema 上增加使用者、角色、登入 session、API Access Token 與資料 owner 欄位，讓一般用戶只能存取自己的名片與聯絡人，內容管理員可查詢所有資料，系統管理員只存取用戶管理與 Logo 紀錄。
 
 如果「PostageDB」指的是其他資料庫產品，請先調整本文件中的 PostgreSQL-specific 設計，例如 `uuid`、`jsonb`、GIN index 與 extension。
 
@@ -36,6 +36,7 @@ create extension if not exists citext;
 - `roles`: 角色定義，例如 system_admin、content_admin、user。
 - `user_roles`: 使用者與角色關聯。
 - `auth_sessions`: 登入 session、過期與撤銷狀態。
+- `api_access_tokens`: 用戶與內容管理員的 API Access Token hash 與狀態。
 - `logo_records`: Logo 圖檔版本與啟用紀錄。
 
 ## Auth and RBAC Tables
@@ -115,6 +116,35 @@ create table auth_sessions (
 create index auth_sessions_user_id_idx on auth_sessions (user_id);
 create index auth_sessions_expires_at_idx on auth_sessions (expires_at);
 ```
+
+### api_access_tokens
+
+```sql
+create table api_access_tokens (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  name text not null default 'Default API Token',
+  token_hash text not null unique,
+  token_prefix text not null,
+  status text not null default 'active',
+  last_used_at timestamptz,
+  expires_at timestamptz,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint api_access_tokens_status_check check (status in ('active', 'expired', 'revoked'))
+);
+
+create unique index api_access_tokens_one_active_per_user_idx
+  on api_access_tokens (user_id)
+  where status = 'active';
+
+create index api_access_tokens_user_id_idx on api_access_tokens (user_id);
+create index api_access_tokens_token_hash_idx on api_access_tokens (token_hash);
+create index api_access_tokens_created_at_idx on api_access_tokens (created_at desc);
+```
+
+API Access Token 明文只在建立時回傳一次。資料庫只保存 hash 與 prefix，並用 partial unique index 保證每個使用者最多一組 active token。
 
 ### logo_records
 
@@ -466,7 +496,7 @@ MVP 重複資料判斷順序：
 建議 migration 順序：
 
 1. extensions。
-2. users / roles / user_roles / auth_sessions。
+2. users / roles / user_roles / auth_sessions / api_access_tokens。
 3. companies。
 4. contacts。
 5. business_cards plus `contacts.source_business_card_id` foreign key。

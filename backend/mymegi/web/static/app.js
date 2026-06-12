@@ -116,6 +116,7 @@ function showAuthenticated(user) {
   });
   document.querySelector('[data-main-tab="upload"]').hidden = isSystemAdmin();
   document.querySelector('[data-main-tab="contacts"]').hidden = isSystemAdmin();
+  document.querySelector('[data-main-tab="api"]').hidden = isSystemAdmin();
   showMainTab(isSystemAdmin() ? "admin" : "upload");
 }
 
@@ -152,6 +153,9 @@ function showMainTab(name) {
   });
   if (name === "contacts") {
     loadContacts().catch((error) => console.error(error));
+  }
+  if (name === "api") {
+    loadAccessTokens().catch((error) => console.error(error));
   }
   if (name === "admin") {
     refreshAdmin().catch((error) => console.error(error));
@@ -582,6 +586,61 @@ async function deleteContact(contactId) {
   await refreshAll();
 }
 
+async function loadAccessTokens() {
+  if (isSystemAdmin()) return;
+  const data = await fetchJson("/api/access-tokens");
+  const body = document.querySelector("#access-tokens-body");
+  if (!data.items.length) {
+    body.innerHTML = `<tr><td colspan="6"><div class="empty">尚無 API Access Token</div></td></tr>`;
+    return;
+  }
+  body.innerHTML = data.items
+    .map(
+      (item) => `
+      <tr>
+        <td>${escapeHtml(item.name)}</td>
+        <td><code>${escapeHtml(item.prefix)}</code></td>
+        <td><span class="badge">${escapeHtml(item.status)}</span></td>
+        <td>${escapeHtml(formatDate(item.lastUsedAt))}</td>
+        <td>${escapeHtml(formatDate(item.createdAt))}</td>
+        <td>
+          <div class="row-actions">
+            ${
+              item.status === "active"
+                ? `<button class="bare-icon danger" type="button" data-revoke-token="${escapeHtml(item.id)}" title="撤銷" aria-label="撤銷">×</button>`
+                : ""
+            }
+          </div>
+        </td>
+      </tr>
+    `,
+    )
+    .join("");
+}
+
+async function createAccessToken(form) {
+  const values = Object.fromEntries(new FormData(form).entries());
+  const result = document.querySelector("#access-token-result");
+  const tokenValue = document.querySelector("#access-token-value");
+  result.hidden = true;
+  tokenValue.textContent = "";
+  const data = await fetchJson("/api/access-tokens", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: values.name || "Default API Token" }),
+  });
+  tokenValue.textContent = data.item.token;
+  result.hidden = false;
+  await loadAccessTokens();
+}
+
+async function revokeAccessToken(tokenId) {
+  if (!window.confirm("確定撤銷這組 API Access Token？")) return;
+  await fetchJson(`/api/access-tokens/${tokenId}/revoke`, { method: "POST" });
+  document.querySelector("#access-token-result").hidden = true;
+  await loadAccessTokens();
+}
+
 async function loadUsers() {
   const data = await fetchJson("/api/users");
   const body = document.querySelector("#users-body");
@@ -840,6 +899,17 @@ document.querySelector("#contacts-body").addEventListener("click", async (event)
   if (deleteButton) {
     await deleteContact(deleteButton.dataset.deleteContact);
   }
+});
+
+document.querySelector("#access-token-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await createAccessToken(event.currentTarget);
+});
+
+document.querySelector("#access-tokens-body").addEventListener("click", async (event) => {
+  const revokeButton = event.target.closest("[data-revoke-token]");
+  if (!revokeButton) return;
+  await revokeAccessToken(revokeButton.dataset.revokeToken);
 });
 
 document.querySelector("#refresh-users").addEventListener("click", refreshAdmin);

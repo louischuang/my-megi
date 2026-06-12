@@ -60,6 +60,14 @@ body:not(.is-authenticated) .site-footer {
   box-shadow: var(--shadow);
 }
 
+.login-heading {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+
 .login-logo {
   width: 220px;
   height: auto;
@@ -68,6 +76,13 @@ body:not(.is-authenticated) .site-footer {
 
 .login-panel h1 {
   font-size: 24px;
+}
+
+.login-version {
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .topbar {
@@ -749,6 +764,39 @@ button.compact {
   gap: 14px;
 }
 
+.token-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.helper-text {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.token-result {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid rgb(255 77 139 / 36%);
+  border-radius: 8px;
+  background: rgb(255 77 139 / 10%);
+}
+
+.token-result code {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
 .detail-grid section {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -884,6 +932,7 @@ th {
   .file-row,
   .field-grid,
   .field-grid.three,
+  .token-grid,
   .admin-grid,
   .detail-grid,
   .review-workbench,

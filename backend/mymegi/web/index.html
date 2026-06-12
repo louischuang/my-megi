@@ -9,8 +9,10 @@
   <body>
     <section class="login-screen" id="login-screen" hidden>
       <form class="login-panel" id="login-form">
-        <img class="login-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
-        <h1>登入 My Megi</h1>
+        <div class="login-heading">
+          <img class="login-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
+          <h1>登入 My Megi</h1>
+        </div>
         <label>
           <span>Email</span>
           <input name="email" type="email" autocomplete="username" value="admin@mymegi.local" required />
@@ -21,6 +23,7 @@
         </label>
         <button type="submit">登入</button>
         <p id="login-error" class="error-text"></p>
+        <p class="login-version">Ver. <span data-app-version>v0.1.5</span></p>
       </form>
     </section>
 
@@ -28,7 +31,7 @@
       <div class="brand">
         <div class="brand-lockup" aria-label="My Megi">
           <img class="brand-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
-          <span class="app-version" data-app-version>v0.1.4</span>
+          <span class="app-version" data-app-version>v0.1.5</span>
         </div>
         <p>名片與人脈資料庫</p>
       </div>
@@ -57,9 +60,9 @@
         <button class="nav-icon" type="button" data-main-tab="contacts" title="聯絡人" aria-label="聯絡人">
           <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="3.5" y="5.5" width="17" height="13" rx="2"/><path d="M8 10h4.5"/><path d="M8 13.5h8"/><circle cx="16.5" cy="10" r="1.6"/></svg>
         </button>
-        <a class="nav-icon" href="/docs" title="API" aria-label="API">
+        <button class="nav-icon" type="button" data-main-tab="api" title="API" aria-label="API">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/><path d="m14 5-4 14"/></svg>
-        </a>
+        </button>
         <button class="nav-icon admin-only" type="button" data-main-tab="admin" title="用戶管理" aria-label="用戶管理" hidden>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         </button>
@@ -161,6 +164,48 @@
         </div>
       </section>
 
+      <section class="main-panel" id="api-panel" data-main-panel="api" hidden>
+        <div class="panel api-panel">
+          <div class="panel-title">
+            <div>
+              <h2>API Access Token</h2>
+              <span>每個帳號最多只能有一組 Active token</span>
+            </div>
+            <a class="ghost" href="/docs" target="_blank" rel="noreferrer">Swagger</a>
+          </div>
+          <div class="token-grid">
+            <form id="access-token-form">
+              <label>
+                <span>Token 名稱</span>
+                <input name="name" type="text" value="Default API Token" maxlength="120" />
+              </label>
+              <button type="submit">產生新的 Token</button>
+              <p class="helper-text">重新產生後，原本 Active token 會自動改成過期。</p>
+            </form>
+            <div class="token-result" id="access-token-result" hidden>
+              <strong>新的 API Access Token</strong>
+              <code id="access-token-value"></code>
+              <small>這個 token 只會顯示一次，請立刻保存。</small>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>名稱</th>
+                  <th>Prefix</th>
+                  <th>狀態</th>
+                  <th>最後使用</th>
+                  <th>建立時間</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="access-tokens-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
       <section class="main-panel" id="admin-panel" data-main-panel="admin" hidden>
         <div class="panel">
           <div class="panel-title">
@@ -225,7 +270,7 @@
     <footer class="site-footer">
       <span>開發者：Louis Chuang</span>
       <span>Copyright: 2026</span>
-      <span>版本號：<span data-app-version>v0.1.4</span></span>
+      <span>版本號：<span data-app-version>v0.1.5</span></span>
     </footer>
 
     <div class="modal" id="review-modal" hidden>

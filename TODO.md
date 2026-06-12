@@ -192,7 +192,7 @@
 
 ## Phase 11: 正式環境準備
 
-- [ ] API token。
+- [x] API token MVP：用戶與內容管理員可自助產生 API Access Token，且每個帳號最多一組 active token。
 - [ ] rate limit。
 - [ ] audit log 完整覆蓋登入、登出、使用者管理、Logo 紀錄與資料操作。
 - [ ] backup/restore 文件。

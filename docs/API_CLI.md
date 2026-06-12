@@ -15,7 +15,7 @@
 
 ## Authentication and Roles
 
-目前採用伺服器端 session cookie，並同時讓登入 API 回傳短效 `sessionToken` 供 CLI 或自動化流程以 Bearer token 使用。正式對第三方開放前仍需補獨立 API token，不應長期共用人類登入 session。
+目前採用伺服器端 session cookie，並同時讓登入 API 回傳短效 `sessionToken` 供 CLI 使用。用戶與內容管理員可以另外產生 API Access Token，供第三方程式以 Bearer token 呼叫 API。每個帳號最多只能有一組 active API Access Token；重新產生時，原 active token 會自動過期。
 
 角色：
 
@@ -221,6 +221,64 @@ Purpose: update display name, role, or status.
 `POST /api/users/{userId}/disable`
 
 Purpose: disable a user account.
+
+### API Access Tokens
+
+Content admin and user only. System admin cannot access content API token management.
+
+`GET /api/access-tokens`
+
+Response `200`:
+
+```json
+{
+  "items": [
+    {
+      "id": "token_123",
+      "name": "Default API Token",
+      "prefix": "mymegi_abc123",
+      "status": "active",
+      "lastUsedAt": null,
+      "expiresAt": null,
+      "revokedAt": null,
+      "createdAt": "2026-06-12T20:00:00+08:00"
+    }
+  ]
+}
+```
+
+`POST /api/access-tokens`
+
+Purpose: create a new API Access Token for the current user. If an active token already exists, it is changed to `expired` before the new token is inserted.
+
+Request:
+
+```json
+{
+  "name": "Zapier Integration"
+}
+```
+
+Response `201`:
+
+```json
+{
+  "item": {
+    "id": "token_124",
+    "name": "Zapier Integration",
+    "prefix": "mymegi_def456",
+    "status": "active",
+    "token": "mymegi_def456...",
+    "createdAt": "2026-06-12T20:05:00+08:00"
+  }
+}
+```
+
+The `token` value is returned only once. Store only the hash in the database.
+
+`POST /api/access-tokens/{tokenId}/revoke`
+
+Purpose: revoke the current user's active token.
 
 `POST /api/users/{userId}/enable`
 
@@ -495,7 +553,7 @@ export MYMEGI_API_TOKEN=YOUR_API_TOKEN
 export MYMEGI_API_TOKEN="登入 API 回傳的 sessionToken"
 ```
 
-後續 Phase 11 會補正式第三方 API token 與 token 管理流程。
+API Access Token MVP 已可在 Web UI 的 API 分頁建立，也可透過 API 建立。每次重新產生都會讓舊 active token 過期。
 
 ### Login / Logout
 

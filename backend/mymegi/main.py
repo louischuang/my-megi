@@ -32,6 +32,7 @@ STATIC_DIR = WEB_DIR / "static"
 PACKAGE_JSON = ROOT_DIR / "package.json"
 SESSION_COOKIE_NAME = "mymegi_session"
 PASSWORD_ITERATIONS = 210_000
+API_TOKEN_PREFIX = "mymegi"
 
 register_heif_opener()
 
@@ -261,6 +262,10 @@ class UserUpdateRequest(BaseModel):
     status: str | None = None
 
 
+class ApiAccessTokenCreateRequest(BaseModel):
+    name: str = Field(default="Default API Token", max_length=120)
+
+
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -292,6 +297,10 @@ def session_token_hash(token: str) -> str:
     return sha256(token.encode("utf-8")).hexdigest()
 
 
+def generate_api_access_token() -> str:
+    return f"{API_TOKEN_PREFIX}_{secrets.token_urlsafe(32)}"
+
+
 def serialize_user(row: Any) -> dict[str, Any]:
     return {
         "id": str(row["id"]),
@@ -302,6 +311,22 @@ def serialize_user(row: Any) -> dict[str, Any]:
         "lastLoginAt": row["last_login_at"].isoformat() if row["last_login_at"] else None,
         "createdAt": row["created_at"].isoformat(),
     }
+
+
+def serialize_api_access_token(row: Any, token: str | None = None) -> dict[str, Any]:
+    payload = {
+        "id": str(row["id"]),
+        "name": row["name"],
+        "prefix": row["token_prefix"],
+        "status": row["status"],
+        "lastUsedAt": row["last_used_at"].isoformat() if row["last_used_at"] else None,
+        "expiresAt": row["expires_at"].isoformat() if row["expires_at"] else None,
+        "revokedAt": row["revoked_at"].isoformat() if row["revoked_at"] else None,
+        "createdAt": row["created_at"].isoformat(),
+    }
+    if token:
+        payload["token"] = token
+    return payload
 
 
 async def upsert_company(connection: Any, payload: ConfirmCardRequest) -> UUID | None:
@@ -510,9 +535,25 @@ async def current_user(
             """,
             session_token_hash(token),
         )
-        if row is None:
-            raise HTTPException(status_code=401, detail="Invalid or expired session")
-        user = await user_with_role(connection, row["user_id"])
+        if row is not None:
+            user = await user_with_role(connection, row["user_id"])
+        else:
+            row = await connection.fetchrow(
+                """
+                update api_access_tokens
+                set last_used_at = now(),
+                    updated_at = now()
+                where token_hash = $1
+                  and status = 'active'
+                  and revoked_at is null
+                  and (expires_at is null or expires_at > now())
+                returning user_id
+                """,
+                session_token_hash(token),
+            )
+            if row is None:
+                raise HTTPException(status_code=401, detail="Invalid or expired session")
+            user = await user_with_role(connection, row["user_id"])
     if user is None or user["status"] != "active":
         raise HTTPException(status_code=401, detail="User is disabled")
     return serialize_user(user)
@@ -675,6 +716,117 @@ async def logout(
 @app.get("/api/me")
 async def me(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     return {"user": user}
+
+
+@app.get("/api/access-tokens")
+async def list_api_access_tokens(
+    user: dict[str, Any] = Depends(require_roles("content_admin", "user")),
+) -> dict[str, Any]:
+    async with database.acquire() as connection:
+        rows = await connection.fetch(
+            """
+            select id, name, token_prefix, status, last_used_at, expires_at,
+                   revoked_at, created_at
+            from api_access_tokens
+            where user_id = $1
+            order by created_at desc
+            """,
+            UUID(user["id"]),
+        )
+    return {"items": [serialize_api_access_token(row) for row in rows]}
+
+
+@app.post("/api/access-tokens", status_code=201)
+async def create_api_access_token(
+    payload: ApiAccessTokenCreateRequest | None = Body(default=None),
+    user: dict[str, Any] = Depends(require_roles("content_admin", "user")),
+) -> dict[str, Any]:
+    token = generate_api_access_token()
+    token_hash = session_token_hash(token)
+    token_name = clean_text(payload.name if payload else None) or "Default API Token"
+    token_prefix = token[:18]
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            await connection.execute(
+                """
+                update api_access_tokens
+                set status = 'expired',
+                    expires_at = coalesce(expires_at, now()),
+                    updated_at = now()
+                where user_id = $1
+                  and status = 'active'
+                """,
+                UUID(user["id"]),
+            )
+            row = await connection.fetchrow(
+                """
+                insert into api_access_tokens (user_id, name, token_hash, token_prefix)
+                values ($1, $2, $3, $4)
+                returning id, name, token_prefix, status, last_used_at, expires_at,
+                          revoked_at, created_at
+                """,
+                UUID(user["id"]),
+                token_name,
+                token_hash,
+                token_prefix,
+            )
+            await connection.execute(
+                """
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, metadata)
+                values ('user', $1, 'create_api_access_token', 'api_access_token', $2, $3::jsonb)
+                """,
+                user["id"],
+                row["id"],
+                json.dumps({"name": token_name, "prefix": token_prefix}, ensure_ascii=False),
+            )
+    return {"item": serialize_api_access_token(row, token=token)}
+
+
+@app.post("/api/access-tokens/{token_id}/revoke")
+async def revoke_api_access_token(
+    token_id: UUID,
+    user: dict[str, Any] = Depends(require_roles("content_admin", "user")),
+) -> dict[str, Any]:
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            row = await connection.fetchrow(
+                """
+                update api_access_tokens
+                set status = 'revoked',
+                    revoked_at = coalesce(revoked_at, now()),
+                    updated_at = now()
+                where id = $1
+                  and user_id = $2
+                  and status = 'active'
+                returning id, name, token_prefix, status, last_used_at, expires_at,
+                          revoked_at, created_at
+                """,
+                token_id,
+                UUID(user["id"]),
+            )
+            if row is None:
+                row = await connection.fetchrow(
+                    """
+                    select id, name, token_prefix, status, last_used_at, expires_at,
+                           revoked_at, created_at
+                    from api_access_tokens
+                    where id = $1
+                      and user_id = $2
+                    """,
+                    token_id,
+                    UUID(user["id"]),
+                )
+            if row is None:
+                raise HTTPException(status_code=404, detail="API access token not found")
+            await connection.execute(
+                """
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, metadata)
+                values ('user', $1, 'revoke_api_access_token', 'api_access_token', $2, '{}'::jsonb)
+                """,
+                user["id"],
+                token_id,
+            )
+    return {"item": serialize_api_access_token(row)}
 
 
 @app.get("/api/users")
