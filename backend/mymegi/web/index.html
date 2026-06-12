@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>My Megi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260612-auto-contact-toast" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260612-centered-toast" />
   </head>
   <body>
     <header class="topbar">
@@ -153,7 +153,9 @@
             <h2 id="review-title">名片審核</h2>
             <span id="review-state">未選取</span>
           </div>
-            <button class="ghost compact" type="button" data-close-modal="review">關閉</button>
+            <button class="bare-icon" type="button" data-close-modal="review" title="關閉" aria-label="關閉">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
         </div>
         <div class="review-empty" id="review-empty">從最近匯入選擇一張名片進行審核</div>
         <div class="review-workbench" id="review-workbench" hidden>
@@ -303,6 +305,6 @@
       <span id="upload-toast-message">辨識度 未評估</span>
     </div>
 
-    <script src="/static/app.js?v=20260612-auto-contact-toast" type="module"></script>
+    <script src="/static/app.js?v=20260612-centered-toast" type="module"></script>
   </body>
 </html>
