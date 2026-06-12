@@ -1,14 +1,18 @@
 import json
 import asyncio
+import base64
+import hmac
+import os
+import secrets
 from contextlib import asynccontextmanager
-from datetime import date
-from hashlib import sha256
+from datetime import date, datetime, timedelta, timezone
+from hashlib import pbkdf2_hmac, sha256
 from io import BytesIO
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, Query, UploadFile
+from fastapi import Body, Cookie, Depends, FastAPI, File, Form, HTTPException, Query, Request, Response as FastApiResponse, UploadFile
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image, UnidentifiedImageError
@@ -26,6 +30,8 @@ ROOT_DIR = APP_DIR.parent.parent
 WEB_DIR = APP_DIR / "web"
 STATIC_DIR = WEB_DIR / "static"
 PACKAGE_JSON = ROOT_DIR / "package.json"
+SESSION_COOKIE_NAME = "mymegi_session"
+PASSWORD_ITERATIONS = 210_000
 
 register_heif_opener()
 
@@ -234,6 +240,70 @@ class RelationshipNoteRequest(BaseModel):
     nextActionDueOn: str | None = None
 
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserCreateRequest(BaseModel):
+    email: str
+    displayName: str
+    password: str
+    role: str = "user"
+    status: str = "active"
+
+
+class UserUpdateRequest(BaseModel):
+    email: str | None = None
+    displayName: str | None = None
+    password: str | None = None
+    role: str | None = None
+    status: str | None = None
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def hash_password(password: str) -> str:
+    salt = os.urandom(16)
+    digest = pbkdf2_hmac("sha256", password.encode("utf-8"), salt, PASSWORD_ITERATIONS)
+    return "pbkdf2_sha256${}${}${}".format(
+        PASSWORD_ITERATIONS,
+        base64.b64encode(salt).decode("ascii"),
+        base64.b64encode(digest).decode("ascii"),
+    )
+
+
+def verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        algorithm, iterations, salt_text, digest_text = stored_hash.split("$", 3)
+        if algorithm != "pbkdf2_sha256":
+            return False
+        salt = base64.b64decode(salt_text)
+        expected = base64.b64decode(digest_text)
+        actual = pbkdf2_hmac("sha256", password.encode("utf-8"), salt, int(iterations))
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(actual, expected)
+
+
+def session_token_hash(token: str) -> str:
+    return sha256(token.encode("utf-8")).hexdigest()
+
+
+def serialize_user(row: Any) -> dict[str, Any]:
+    return {
+        "id": str(row["id"]),
+        "email": row["email"],
+        "displayName": row["display_name"],
+        "role": row["role"],
+        "status": row["status"],
+        "lastLoginAt": row["last_login_at"].isoformat() if row["last_login_at"] else None,
+        "createdAt": row["created_at"].isoformat(),
+    }
+
+
 async def upsert_company(connection: Any, payload: ConfirmCardRequest) -> UUID | None:
     company_name = clean_text(payload.company.name) or clean_text(payload.company.englishName)
     normalized_company = normalize_lookup(company_name) if company_name else None
@@ -328,9 +398,12 @@ async def replace_contact_details(
         await connection.execute(
             """
             insert into relationship_notes (
-              contact_id, business_card_id, met_at, met_on, summary
+              owner_user_id, contact_id, business_card_id, met_at, met_on, summary
             )
-            values ($1, $2, $3, $4, $5)
+            values (
+              (select owner_user_id from contacts where id = $1),
+              $1, $2, $3, $4, $5
+            )
             """,
             contact_id,
             business_card_id,
@@ -348,11 +421,123 @@ async def replace_contact_details(
         await link_contact_classification(connection, contact_id, "industry", name)
 
 
+async def ensure_bootstrap_admin() -> None:
+    settings = get_settings()
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            role_id = await connection.fetchval("select id from roles where code = 'system_admin'")
+            if role_id is None:
+                return
+            admin_id = await connection.fetchval(
+                """
+                insert into users (email, display_name, password_hash, metadata)
+                values ($1, $2, $3, $4::jsonb)
+                on conflict (email) do update
+                set display_name = coalesce(users.display_name, excluded.display_name)
+                returning id
+                """,
+                settings.bootstrap_admin_email,
+                settings.bootstrap_admin_name,
+                hash_password(settings.bootstrap_admin_password),
+                json.dumps({"source": "bootstrap"}, ensure_ascii=False),
+            )
+            await connection.execute(
+                """
+                insert into user_roles (user_id, role_id)
+                values ($1, $2)
+                on conflict do nothing
+                """,
+                admin_id,
+                role_id,
+            )
+            await connection.execute(
+                "update business_cards set owner_user_id = $1 where owner_user_id is null",
+                admin_id,
+            )
+            await connection.execute(
+                "update contacts set owner_user_id = $1 where owner_user_id is null",
+                admin_id,
+            )
+            await connection.execute(
+                "update relationship_notes set owner_user_id = $1 where owner_user_id is null",
+                admin_id,
+            )
+
+
+async def user_with_role(connection: Any, user_id: UUID) -> Any:
+    return await connection.fetchrow(
+        """
+        select
+          u.id, u.email, u.display_name, u.status, u.last_login_at, u.created_at,
+          coalesce(r.code, 'user') as role
+        from users u
+        left join user_roles ur on ur.user_id = u.id
+        left join roles r on r.id = ur.role_id
+        where u.id = $1
+          and u.deleted_at is null
+        order by
+          case r.code
+            when 'system_admin' then 1
+            when 'content_admin' then 2
+            when 'user' then 3
+            else 9
+          end
+        limit 1
+        """,
+        user_id,
+    )
+
+
+async def current_user(
+    request: Request,
+    session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict[str, Any]:
+    token = session_cookie
+    authorization = request.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    async with database.acquire() as connection:
+        row = await connection.fetchrow(
+            """
+            select s.user_id
+            from auth_sessions s
+            where s.session_token_hash = $1
+              and s.revoked_at is null
+              and s.expires_at > now()
+            """,
+            session_token_hash(token),
+        )
+        if row is None:
+            raise HTTPException(status_code=401, detail="Invalid or expired session")
+        user = await user_with_role(connection, row["user_id"])
+    if user is None or user["status"] != "active":
+        raise HTTPException(status_code=401, detail="User is disabled")
+    return serialize_user(user)
+
+
+def require_roles(*roles: str):
+    async def dependency(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+        if user["role"] not in roles:
+            raise HTTPException(status_code=403, detail="Permission denied")
+        return user
+
+    return dependency
+
+
+def ensure_not_system_admin(user: dict[str, Any]) -> None:
+    if user["role"] == "system_admin":
+        raise HTTPException(status_code=403, detail="System admin cannot access content data")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     await database.connect(settings)
+    await ensure_bootstrap_admin()
     yield
     await database.disconnect()
 
@@ -395,14 +580,283 @@ async def version() -> dict[str, str]:
     return {"version": app_version()}
 
 
-@app.get("/api/dashboard")
-async def dashboard() -> dict[str, Any]:
+@app.post("/api/auth/login")
+async def login(
+    request: Request,
+    response: FastApiResponse,
+    payload: LoginRequest = Body(...),
+) -> dict[str, Any]:
     async with database.acquire() as connection:
-        contacts = await connection.fetchval("select count(*) from contacts where deleted_at is null")
+        user = await connection.fetchrow(
+            """
+            select id, email, display_name, password_hash, status, last_login_at, created_at
+            from users
+            where email = $1
+              and deleted_at is null
+            """,
+            payload.email.strip(),
+        )
+        if user is None or user["status"] != "active" or not verify_password(payload.password, user["password_hash"]):
+            raise HTTPException(status_code=401, detail="Invalid email or password")
+
+        token = secrets.token_urlsafe(32)
+        expires_at = utc_now() + timedelta(days=max(1, get_settings().session_days))
+        await connection.execute(
+            """
+            insert into auth_sessions (
+              user_id, session_token_hash, user_agent, ip_address, expires_at
+            )
+            values ($1, $2, $3, $4::inet, $5)
+            """,
+            user["id"],
+            session_token_hash(token),
+            request.headers.get("user-agent"),
+            request.client.host if request.client else None,
+            expires_at,
+        )
+        await connection.execute(
+            "update users set last_login_at = now(), updated_at = now() where id = $1",
+            user["id"],
+        )
+        role_user = await user_with_role(connection, user["id"])
+        await connection.execute(
+            """
+            insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, metadata)
+            values ('user', $1, 'login', 'user', $2, '{}'::jsonb)
+            """,
+            str(user["id"]),
+            user["id"],
+        )
+
+    response.set_cookie(
+        SESSION_COOKIE_NAME,
+        token,
+        httponly=True,
+        samesite="lax",
+        max_age=max(1, get_settings().session_days) * 24 * 60 * 60,
+    )
+    return {"user": serialize_user(role_user), "sessionToken": token}
+
+
+@app.post("/api/auth/logout")
+async def logout(
+    request: Request,
+    response: FastApiResponse,
+    user: dict[str, Any] = Depends(current_user),
+    session_cookie: str | None = Cookie(default=None, alias=SESSION_COOKIE_NAME),
+) -> dict[str, str]:
+    token = session_cookie
+    authorization = request.headers.get("authorization", "")
+    if authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+    if token:
+        async with database.acquire() as connection:
+            await connection.execute(
+                """
+                update auth_sessions
+                set revoked_at = now()
+                where session_token_hash = $1
+                  and revoked_at is null
+                """,
+                session_token_hash(token),
+            )
+            await connection.execute(
+                """
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, metadata)
+                values ('user', $1, 'logout', 'user', $2, '{}'::jsonb)
+                """,
+                user["id"],
+                UUID(user["id"]),
+            )
+    response.delete_cookie(SESSION_COOKIE_NAME)
+    return {"status": "logged_out"}
+
+
+@app.get("/api/me")
+async def me(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return {"user": user}
+
+
+@app.get("/api/users")
+async def list_users(user: dict[str, Any] = Depends(require_roles("system_admin"))) -> dict[str, Any]:
+    async with database.acquire() as connection:
+        rows = await connection.fetch(
+            """
+            select
+              u.id, u.email, u.display_name, u.status, u.last_login_at, u.created_at,
+              coalesce(r.code, 'user') as role
+            from users u
+            left join user_roles ur on ur.user_id = u.id
+            left join roles r on r.id = ur.role_id
+            where u.deleted_at is null
+            order by u.created_at desc
+            """
+        )
+    return {"items": [serialize_user(row) for row in rows]}
+
+
+async def set_user_role(connection: Any, user_id: UUID, role_code: str) -> None:
+    role_id = await connection.fetchval("select id from roles where code = $1", role_code)
+    if role_id is None:
+        raise HTTPException(status_code=422, detail="Invalid role")
+    await connection.execute("delete from user_roles where user_id = $1", user_id)
+    await connection.execute(
+        "insert into user_roles (user_id, role_id) values ($1, $2)",
+        user_id,
+        role_id,
+    )
+
+
+@app.post("/api/users", status_code=201)
+async def create_user(
+    payload: UserCreateRequest = Body(...),
+    actor: dict[str, Any] = Depends(require_roles("system_admin")),
+) -> dict[str, Any]:
+    if payload.status not in {"active", "disabled"}:
+        raise HTTPException(status_code=422, detail="Invalid status")
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            user_id = await connection.fetchval(
+                """
+                insert into users (email, display_name, password_hash, status)
+                values ($1, $2, $3, $4)
+                returning id
+                """,
+                payload.email.strip(),
+                payload.displayName.strip(),
+                hash_password(payload.password),
+                payload.status,
+            )
+            await set_user_role(connection, user_id, payload.role)
+            row = await user_with_role(connection, user_id)
+            await connection.execute(
+                """
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, after_data)
+                values ('user', $1, 'create_user', 'user', $2, $3::jsonb)
+                """,
+                actor["id"],
+                user_id,
+                json.dumps(serialize_user(row), ensure_ascii=False),
+            )
+    return {"user": serialize_user(row)}
+
+
+@app.patch("/api/users/{user_id}")
+async def update_user(
+    user_id: UUID,
+    payload: UserUpdateRequest = Body(...),
+    actor: dict[str, Any] = Depends(require_roles("system_admin")),
+) -> dict[str, Any]:
+    if payload.status and payload.status not in {"active", "disabled"}:
+        raise HTTPException(status_code=422, detail="Invalid status")
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            existing = await connection.fetchrow(
+                "select id from users where id = $1 and deleted_at is null for update",
+                user_id,
+            )
+            if existing is None:
+                raise HTTPException(status_code=404, detail="User not found")
+            await connection.execute(
+                """
+                update users
+                set email = coalesce($2, email),
+                    display_name = coalesce($3, display_name),
+                    password_hash = coalesce($4, password_hash),
+                    status = coalesce($5, status),
+                    updated_at = now()
+                where id = $1
+                """,
+                user_id,
+                payload.email.strip() if payload.email else None,
+                payload.displayName.strip() if payload.displayName else None,
+                hash_password(payload.password) if payload.password else None,
+                payload.status,
+            )
+            if payload.role:
+                await set_user_role(connection, user_id, payload.role)
+            row = await user_with_role(connection, user_id)
+            await connection.execute(
+                """
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, after_data)
+                values ('user', $1, 'update_user', 'user', $2, $3::jsonb)
+                """,
+                actor["id"],
+                user_id,
+                json.dumps(serialize_user(row), ensure_ascii=False),
+            )
+    return {"user": serialize_user(row)}
+
+
+@app.post("/api/users/{user_id}/disable")
+async def disable_user(
+    user_id: UUID,
+    actor: dict[str, Any] = Depends(require_roles("system_admin")),
+) -> dict[str, Any]:
+    return await update_user(user_id, UserUpdateRequest(status="disabled"), actor)
+
+
+@app.post("/api/users/{user_id}/enable")
+async def enable_user(
+    user_id: UUID,
+    actor: dict[str, Any] = Depends(require_roles("system_admin")),
+) -> dict[str, Any]:
+    return await update_user(user_id, UserUpdateRequest(status="active"), actor)
+
+
+@app.get("/api/logo-records")
+async def list_logo_records(
+    user: dict[str, Any] = Depends(require_roles("system_admin")),
+) -> dict[str, Any]:
+    async with database.acquire() as connection:
+        rows = await connection.fetch(
+            """
+            select lr.id, lr.file_name, lr.storage_path, lr.version_label, lr.is_active,
+                   lr.created_at, u.display_name as created_by
+            from logo_records lr
+            left join users u on u.id = lr.created_by_user_id
+            order by lr.created_at desc
+            limit 100
+            """
+        )
+    return {
+        "items": [
+            {
+                "id": str(row["id"]),
+                "fileName": row["file_name"],
+                "storagePath": row["storage_path"],
+                "versionLabel": row["version_label"],
+                "isActive": row["is_active"],
+                "createdBy": row["created_by"],
+                "createdAt": row["created_at"].isoformat(),
+            }
+            for row in rows
+        ]
+    }
+
+
+@app.get("/api/dashboard")
+async def dashboard(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    ensure_not_system_admin(user)
+    owner_clause = "" if user["role"] == "content_admin" else " and owner_user_id = $1"
+    params = [] if user["role"] == "content_admin" else [UUID(user["id"])]
+    async with database.acquire() as connection:
+        contacts = await connection.fetchval(
+            f"select count(*) from contacts where deleted_at is null{owner_clause}",
+            *params,
+        )
         companies = await connection.fetchval("select count(*) from companies")
-        cards = await connection.fetchval("select count(*) from business_cards")
+        cards = await connection.fetchval(
+            f"select count(*) from business_cards where true{owner_clause}",
+            *params,
+        )
         pending = await connection.fetchval(
-            "select count(*) from business_cards where status in ('pending', 'processing', 'needs_review')"
+            f"""
+            select count(*) from business_cards
+            where status in ('pending', 'processing', 'needs_review')
+            {owner_clause}
+            """,
+            *params,
         )
     return {
         "contacts": contacts,
@@ -413,25 +867,35 @@ async def dashboard() -> dict[str, Any]:
 
 
 @app.get("/api/cards")
-async def list_cards(limit: int = 10) -> dict[str, Any]:
+async def list_cards(
+    limit: int = 10,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     limit = max(1, min(limit, 50))
+    owner_clause = "" if user["role"] == "content_admin" else "where owner_user_id = $2"
+    params: list[Any] = [limit]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         rows = await connection.fetch(
-            """
+            f"""
             select
-              id, original_filename, back_original_filename, mime_type, file_size_bytes, status,
+              id, owner_user_id, original_filename, back_original_filename, mime_type, file_size_bytes, status,
               created_at, error_message, left(coalesce(ocr_text, ''), 160) as ocr_preview,
               extracted_data, extraction_confidence, contact_id
             from business_cards
+            {owner_clause}
             order by created_at desc
             limit $1
             """,
-            limit,
+            *params,
         )
     return {
         "items": [
             {
                 "id": str(row["id"]),
+                "ownerUserId": str(row["owner_user_id"]) if row["owner_user_id"] else None,
                 "fileName": row["original_filename"],
                 "backFileName": row["back_original_filename"],
                 "mimeType": row["mime_type"],
@@ -451,20 +915,29 @@ async def list_cards(limit: int = 10) -> dict[str, Any]:
 
 
 @app.get("/api/cards/{card_id}")
-async def get_card(card_id: UUID) -> dict[str, Any]:
+async def get_card(
+    card_id: UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    ensure_not_system_admin(user)
+    owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+    params: list[Any] = [card_id]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         row = await connection.fetchrow(
-            """
+            f"""
             select
-              id, contact_id, original_filename, storage_path, mime_type, file_size_bytes,
+              id, owner_user_id, contact_id, original_filename, storage_path, mime_type, file_size_bytes,
               back_original_filename, back_storage_path, back_mime_type, back_file_size_bytes,
               status, side_metadata, extra_notes,
               created_at, updated_at, error_code, error_message, ocr_text, ocr_metadata,
               llm_provider, llm_model, extracted_data, extraction_confidence
             from business_cards
             where id = $1
+            {owner_clause}
             """,
-            card_id,
+            *params,
         )
     if row is None:
         raise HTTPException(status_code=404, detail="Business card not found")
@@ -472,6 +945,7 @@ async def get_card(card_id: UUID) -> dict[str, Any]:
     metadata = json_object(row["ocr_metadata"])
     return {
         "id": str(row["id"]),
+        "ownerUserId": str(row["owner_user_id"]) if row["owner_user_id"] else None,
         "contactId": str(row["contact_id"]) if row["contact_id"] else None,
         "fileName": row["original_filename"],
         "backFileName": row["back_original_filename"],
@@ -521,16 +995,26 @@ async def get_card(card_id: UUID) -> dict[str, Any]:
 
 
 @app.get("/api/cards/{card_id}/file")
-async def get_card_file(card_id: UUID, side: str = "front") -> FileResponse:
+async def get_card_file(
+    card_id: UUID,
+    side: str = "front",
+    user: dict[str, Any] = Depends(current_user),
+) -> FileResponse:
+    ensure_not_system_admin(user)
+    owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+    params: list[Any] = [card_id]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         row = await connection.fetchrow(
-            """
+            f"""
             select original_filename, storage_path, mime_type,
                    back_original_filename, back_storage_path, back_mime_type
             from business_cards
             where id = $1
+            {owner_clause}
             """,
-            card_id,
+            *params,
         )
     if row is None:
         raise HTTPException(status_code=404, detail="Business card not found")
@@ -549,17 +1033,27 @@ async def get_card_file(card_id: UUID, side: str = "front") -> FileResponse:
 
 
 @app.get("/api/cards/{card_id}/preview", response_model=None)
-async def get_card_preview(card_id: UUID, side: str = "front"):
+async def get_card_preview(
+    card_id: UUID,
+    side: str = "front",
+    user: dict[str, Any] = Depends(current_user),
+):
+    ensure_not_system_admin(user)
+    owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+    params: list[Any] = [card_id]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         row = await connection.fetchrow(
-            """
+            f"""
             select original_filename, storage_path, mime_type,
                    back_original_filename, back_storage_path, back_mime_type,
                    ocr_metadata
             from business_cards
             where id = $1
+            {owner_clause}
             """,
-            card_id,
+            *params,
         )
     if row is None:
         raise HTTPException(status_code=404, detail="Business card not found")
@@ -590,16 +1084,22 @@ async def get_card_preview(card_id: UUID, side: str = "front"):
     return Response(content=preview, media_type="image/jpeg")
 
 
-async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
+async def run_card_ocr(card_id: UUID, user: dict[str, Any]) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     settings = get_settings()
+    owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+    params: list[Any] = [card_id]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         card = await connection.fetchrow(
-            """
+            f"""
             select id, storage_path, mime_type, back_storage_path, back_mime_type
             from business_cards
             where id = $1
+            {owner_clause}
             """,
-            card_id,
+            *params,
         )
         if card is None:
             raise HTTPException(status_code=404, detail="Business card not found")
@@ -697,17 +1197,23 @@ async def run_card_ocr(card_id: UUID) -> dict[str, Any]:
     }
 
 
-async def run_card_structure(card_id: UUID) -> dict[str, Any]:
+async def run_card_structure(card_id: UUID, user: dict[str, Any]) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     settings = get_settings()
+    owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+    params: list[Any] = [card_id]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         card = await connection.fetchrow(
-            """
+            f"""
             select id, ocr_text, storage_path, mime_type,
                    back_storage_path, back_mime_type, ocr_metadata
             from business_cards
             where id = $1
+            {owner_clause}
             """,
-            card_id,
+            *params,
         )
         if card is None:
             raise HTTPException(status_code=404, detail="Business card not found")
@@ -770,15 +1276,15 @@ async def run_card_structure(card_id: UUID) -> dict[str, Any]:
     }
 
 
-async def process_card_for_review(card_id: UUID) -> dict[str, Any]:
-    ocr_result = await run_card_ocr(card_id)
+async def process_card_for_review(card_id: UUID, user: dict[str, Any]) -> dict[str, Any]:
+    ocr_result = await run_card_ocr(card_id, user)
     if not ocr_result["ocrText"]:
         return ocr_result
-    structure_result = await run_card_structure(card_id)
+    structure_result = await run_card_structure(card_id, user)
     draft = structure_result["draft"]
     if is_auto_confirmable(draft):
         payload = ConfirmCardRequest.model_validate(auto_confirm_payload(draft))
-        confirm_result = await confirm_card(card_id, payload)
+        confirm_result = await confirm_card(card_id, payload, user)
         return {
             "cardId": str(card_id),
             "status": confirm_result["status"],
@@ -902,7 +1408,9 @@ async def upload_card(
     met_at: str | None = Form(default=None, alias="metAt"),
     met_on: str | None = Form(default=None, alias="metOn"),
     note: str | None = Form(default=None),
+    user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     settings = get_settings()
 
     content = await file.read()
@@ -964,13 +1472,14 @@ async def upload_card(
         await connection.execute(
             """
             insert into business_cards (
-              id, original_filename, storage_path, mime_type, file_size_bytes,
+              id, owner_user_id, original_filename, storage_path, mime_type, file_size_bytes,
               checksum_sha256, back_original_filename, back_storage_path, back_mime_type,
               back_file_size_bytes, back_checksum_sha256, status, ocr_engine, ocr_metadata
             )
-            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'pending', $12, $13::jsonb)
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14::jsonb)
             """,
             card_id,
+            UUID(user["id"]),
             file.filename or safe_name,
             str(storage_path),
             content_type,
@@ -986,7 +1495,7 @@ async def upload_card(
         )
 
     try:
-        process_result = await process_card_for_review(card_id)
+        process_result = await process_card_for_review(card_id, user)
         status = process_result["status"]
         processing_error = None
     except HTTPException as exc:
@@ -1012,21 +1521,31 @@ async def upload_card(
 
 
 @app.post("/api/cards/{card_id}/confirm", status_code=201)
-async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -> dict[str, Any]:
+async def confirm_card(
+    card_id: UUID,
+    payload: ConfirmCardRequest = Body(...),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     display_name = clean_text(payload.name)
     if not display_name:
         raise HTTPException(status_code=422, detail="name is required")
 
     async with database.acquire() as connection:
         async with connection.transaction():
+            owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+            params: list[Any] = [card_id]
+            if user["role"] != "content_admin":
+                params.append(UUID(user["id"]))
             card = await connection.fetchrow(
-                """
-                select id, contact_id, extracted_data, ocr_metadata
+                f"""
+                select id, owner_user_id, contact_id, extracted_data, ocr_metadata
                 from business_cards
                 where id = $1
+                {owner_clause}
                 for update
                 """,
-                card_id,
+                *params,
             )
             if card is None:
                 raise HTTPException(status_code=404, detail="Business card not found")
@@ -1067,6 +1586,7 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                     """
                     update contacts
                     set company_id = $2,
+                        owner_user_id = coalesce(owner_user_id, $10),
                         display_name = $3,
                         english_name = $4,
                         title = $5,
@@ -1086,16 +1606,19 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
                     clean_text(payload.extraNotes),
                     card_id,
                     json.dumps({"lastCardReview": payload.model_dump(mode="json")}, ensure_ascii=False),
+                    card["owner_user_id"] or UUID(user["id"]),
                 )
             else:
                 contact_id = await connection.fetchval(
                     """
                     insert into contacts (
-                      company_id, display_name, english_name, title, notes, extra_notes, source_business_card_id, metadata
+                      owner_user_id, company_id, display_name, english_name, title,
+                      notes, extra_notes, source_business_card_id, metadata
                     )
-                    values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+                    values ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
                     returning id
                     """,
+                    card["owner_user_id"] or UUID(user["id"]),
                     company_id,
                     display_name,
                     clean_text(payload.englishName),
@@ -1150,13 +1673,19 @@ async def confirm_card(card_id: UUID, payload: ConfirmCardRequest = Body(...)) -
 
 
 @app.post("/api/cards/{card_id}/extract")
-async def extract_card(card_id: UUID) -> dict[str, Any]:
-    return await run_card_ocr(card_id)
+async def extract_card(
+    card_id: UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    return await run_card_ocr(card_id, user)
 
 
 @app.post("/api/cards/{card_id}/structure")
-async def structure_card(card_id: UUID) -> dict[str, Any]:
-    return await run_card_structure(card_id)
+async def structure_card(
+    card_id: UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    return await run_card_structure(card_id, user)
 
 
 @app.get("/api/contacts")
@@ -1167,7 +1696,9 @@ async def list_contacts(
     industry_classification: str | None = Query(default=None, alias="industryClassification"),
     limit: int = 20,
     offset: int = 0,
+    user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     limit = max(1, min(limit, 100))
     offset = max(0, offset)
 
@@ -1178,6 +1709,9 @@ async def list_contacts(
         region_classification,
         industry_classification,
     )
+    if user["role"] != "content_admin":
+        row_conditions.append(f"c.owner_user_id = ${3 + len(row_filter_params)}")
+        row_filter_params.append(UUID(user["id"]))
     row_params: list[Any] = [limit, offset, *row_filter_params]
     row_where = "where " + " and ".join(row_conditions)
 
@@ -1188,6 +1722,9 @@ async def list_contacts(
         region_classification,
         industry_classification,
     )
+    if user["role"] != "content_admin":
+        count_conditions.append(f"c.owner_user_id = ${1 + len(count_params)}")
+        count_params.append(UUID(user["id"]))
     count_where = "where " + " and ".join(count_conditions)
 
     async with database.acquire() as connection:
@@ -1195,6 +1732,7 @@ async def list_contacts(
             f"""
             select
               c.id,
+              c.owner_user_id,
               c.display_name,
               c.english_name,
               c.title,
@@ -1237,6 +1775,7 @@ async def list_contacts(
         "items": [
             {
                 "id": str(row["id"]),
+                "ownerUserId": str(row["owner_user_id"]) if row["owner_user_id"] else None,
                 "name": row["display_name"],
                 "englishName": row["english_name"],
                 "title": row["title"],
@@ -1254,12 +1793,21 @@ async def list_contacts(
 
 
 @app.get("/api/contacts/{contact_id}")
-async def get_contact(contact_id: UUID) -> dict[str, Any]:
+async def get_contact(
+    contact_id: UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    ensure_not_system_admin(user)
+    owner_clause = "" if user["role"] == "content_admin" else "and c.owner_user_id = $2"
+    params: list[Any] = [contact_id]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         row = await connection.fetchrow(
-            """
+            f"""
             select
               c.id,
+              c.owner_user_id,
               c.display_name,
               c.english_name,
               c.title,
@@ -1282,8 +1830,9 @@ async def get_contact(contact_id: UUID) -> dict[str, Any]:
             left join business_cards bc on bc.id = c.source_business_card_id
             where c.id = $1
               and c.deleted_at is null
+              {owner_clause}
             """,
-            contact_id,
+            *params,
         )
         if row is None:
             raise HTTPException(status_code=404, detail="Contact not found")
@@ -1333,6 +1882,7 @@ async def get_contact(contact_id: UUID) -> dict[str, Any]:
 
     return {
         "id": str(row["id"]),
+        "ownerUserId": str(row["owner_user_id"]) if row["owner_user_id"] else None,
         "name": row["display_name"],
         "englishName": row["english_name"],
         "title": row["title"],
@@ -1419,22 +1969,32 @@ async def get_contact(contact_id: UUID) -> dict[str, Any]:
 
 
 @app.put("/api/contacts/{contact_id}")
-async def update_contact(contact_id: UUID, payload: ContactUpdateRequest = Body(...)) -> dict[str, Any]:
+async def update_contact(
+    contact_id: UUID,
+    payload: ContactUpdateRequest = Body(...),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     display_name = clean_text(payload.name)
     if not display_name:
         raise HTTPException(status_code=422, detail="name is required")
 
     async with database.acquire() as connection:
         async with connection.transaction():
+            owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+            params: list[Any] = [contact_id]
+            if user["role"] != "content_admin":
+                params.append(UUID(user["id"]))
             existing = await connection.fetchrow(
-                """
+                f"""
                 select id, source_business_card_id
                 from contacts
                 where id = $1
                   and deleted_at is null
+                  {owner_clause}
                 for update
                 """,
-                contact_id,
+                *params,
             )
             if existing is None:
                 raise HTTPException(status_code=404, detail="Contact not found")
@@ -1497,17 +2057,26 @@ async def update_contact(contact_id: UUID, payload: ContactUpdateRequest = Body(
 
 
 @app.delete("/api/contacts/{contact_id}")
-async def delete_contact(contact_id: UUID) -> dict[str, Any]:
+async def delete_contact(
+    contact_id: UUID,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    ensure_not_system_admin(user)
+    owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+    params: list[Any] = [contact_id]
+    if user["role"] != "content_admin":
+        params.append(UUID(user["id"]))
     async with database.acquire() as connection:
         result = await connection.execute(
-            """
+            f"""
             update contacts
             set deleted_at = now(),
                 updated_at = now()
             where id = $1
               and deleted_at is null
+              {owner_clause}
             """,
-            contact_id,
+            *params,
         )
     if result == "UPDATE 0":
         raise HTTPException(status_code=404, detail="Contact not found")
@@ -1518,7 +2087,9 @@ async def delete_contact(contact_id: UUID) -> dict[str, Any]:
 async def add_relationship_note(
     contact_id: UUID,
     payload: RelationshipNoteRequest = Body(...),
+    user: dict[str, Any] = Depends(current_user),
 ) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     summary = clean_text(payload.summary)
     if not summary:
         raise HTTPException(status_code=422, detail="summary is required")
@@ -1527,14 +2098,19 @@ async def add_relationship_note(
 
     async with database.acquire() as connection:
         async with connection.transaction():
+            owner_clause = "" if user["role"] == "content_admin" else "and owner_user_id = $2"
+            params: list[Any] = [contact_id]
+            if user["role"] != "content_admin":
+                params.append(UUID(user["id"]))
             contact = await connection.fetchrow(
-                """
-                select id, source_business_card_id
+                f"""
+                select id, owner_user_id, source_business_card_id
                 from contacts
                 where id = $1
                   and deleted_at is null
+                  {owner_clause}
                 """,
-                contact_id,
+                *params,
             )
             if contact is None:
                 raise HTTPException(status_code=404, detail="Contact not found")
@@ -1542,12 +2118,13 @@ async def add_relationship_note(
             note_id = await connection.fetchval(
                 """
                 insert into relationship_notes (
-                  contact_id, business_card_id, met_at, met_on,
+                  owner_user_id, contact_id, business_card_id, met_at, met_on,
                   summary, next_action, next_action_due_on
                 )
-                values ($1, $2, $3, $4, $5, $6, $7)
+                values ($1, $2, $3, $4, $5, $6, $7, $8)
                 returning id
                 """,
+                contact["owner_user_id"],
                 contact_id,
                 contact["source_business_card_id"],
                 clean_text(payload.metAt),
@@ -1580,7 +2157,11 @@ async def add_relationship_note(
 
 
 @app.get("/api/classifications")
-async def list_classifications(type: str | None = None) -> dict[str, Any]:
+async def list_classifications(
+    type: str | None = None,
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    ensure_not_system_admin(user)
     params: list[Any] = []
     where = ""
     if type and type.strip():

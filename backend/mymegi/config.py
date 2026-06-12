@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="ollama", alias="OPENAI_API_KEY")
     llm_model: str = Field(default="gemma4:e4b", alias="LLM_MODEL")
     ocr_engine: str = Field(default="tesseract", alias="OCR_ENGINE")
+    bootstrap_admin_email: str = Field(default="admin@mymegi.local", alias="BOOTSTRAP_ADMIN_EMAIL")
+    bootstrap_admin_password: str = Field(default="mymegi-admin", alias="BOOTSTRAP_ADMIN_PASSWORD")
+    bootstrap_admin_name: str = Field(default="My Megi Admin", alias="BOOTSTRAP_ADMIN_NAME")
+    session_days: int = Field(default=7, alias="SESSION_DAYS")
 
 
 @lru_cache

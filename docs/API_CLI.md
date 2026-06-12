@@ -10,12 +10,12 @@
 - OpenAPI JSON 預設路徑建議為 `/openapi.json`。
 - 所有時間使用 ISO 8601。
 - 所有錯誤回應使用一致格式。
-- 下一階段所有非登入端點預設需要 authentication。
+- 除登入、health、靜態資產與版本查詢外，主要資料 API 預設需要 authentication。
 - API 必須在後端套用角色與資料 owner 檢查，不能只依賴前端隱藏 UI。
 
 ## Authentication and Roles
 
-下一階段建議先採用伺服器端 session cookie，或短效 bearer token。正式對第三方開放前再補 API token。
+目前採用伺服器端 session cookie，並同時讓登入 API 回傳短效 `sessionToken` 供 CLI 或自動化流程以 Bearer token 使用。正式對第三方開放前仍需補獨立 API token，不應長期共用人類登入 session。
 
 角色：
 
@@ -166,9 +166,12 @@ Response `200`:
     "email": "louis@example.com",
     "displayName": "Louis Chuang",
     "role": "user"
-  }
+  },
+  "sessionToken": "short-lived-session-token"
 }
 ```
+
+Web UI 會使用 HTTP-only session cookie。CLI 或自動化程式可將 `sessionToken` 設為 `MYMEGI_API_TOKEN`，或在 request header 帶上 `Authorization: Bearer <sessionToken>`。
 
 ### Logout
 
@@ -486,7 +489,13 @@ export MYMEGI_API_URL=http://localhost:8000
 export MYMEGI_API_TOKEN=YOUR_API_TOKEN
 ```
 
-單人 MVP 若尚未實作 authentication，可先省略 token。多人 MVP 需要 CLI 支援登入或 token 設定，並在每次 request 帶上 credentials。
+多人 MVP 後，CLI 呼叫受保護 API 必須帶 token。現階段可先透過登入 API 取得 `sessionToken`，再設定：
+
+```bash
+export MYMEGI_API_TOKEN="登入 API 回傳的 sessionToken"
+```
+
+後續 Phase 11 會補正式第三方 API token 與 token 管理流程。
 
 ### Login / Logout
 

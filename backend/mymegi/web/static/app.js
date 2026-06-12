@@ -1,4 +1,5 @@
 const state = {
+  currentUser: null,
   contactsQuery: "",
   companyClassification: "",
   regionClassification: "",
@@ -88,9 +89,34 @@ async function fetchJson(url, options) {
     } catch {
       message = text;
     }
-    throw new Error(message || `Request failed: ${response.status}`);
+    const error = new Error(message || `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
   return response.json();
+}
+
+function isSystemAdmin() {
+  return state.currentUser?.role === "system_admin";
+}
+
+function showLogin() {
+  state.currentUser = null;
+  document.body.classList.remove("is-authenticated");
+  document.querySelector("#login-screen").hidden = false;
+}
+
+function showAuthenticated(user) {
+  state.currentUser = user;
+  document.body.classList.add("is-authenticated");
+  document.querySelector("#login-screen").hidden = true;
+  document.querySelector("#current-user-label").textContent = `${user.displayName} · ${user.role}`;
+  document.querySelectorAll(".admin-only").forEach((element) => {
+    element.hidden = !isSystemAdmin();
+  });
+  document.querySelector('[data-main-tab="upload"]').hidden = isSystemAdmin();
+  document.querySelector('[data-main-tab="contacts"]').hidden = isSystemAdmin();
+  showMainTab(isSystemAdmin() ? "admin" : "upload");
 }
 
 function openModal(name) {
@@ -115,6 +141,9 @@ function detailValue(value) {
 }
 
 function showMainTab(name) {
+  if (isSystemAdmin() && name !== "admin") {
+    name = "admin";
+  }
   document.querySelectorAll("[data-main-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.mainPanel !== name;
   });
@@ -123,6 +152,9 @@ function showMainTab(name) {
   });
   if (name === "contacts") {
     loadContacts().catch((error) => console.error(error));
+  }
+  if (name === "admin") {
+    refreshAdmin().catch((error) => console.error(error));
   }
 }
 
@@ -155,6 +187,7 @@ function assignDroppedFile(input, files) {
 }
 
 async function loadDashboard() {
+  if (isSystemAdmin()) return;
   const data = await fetchJson("/api/dashboard");
   document.querySelector("#metric-contacts").textContent = data.contacts;
   document.querySelector("#metric-companies").textContent = data.companies;
@@ -174,6 +207,7 @@ async function loadVersion() {
 }
 
 async function loadCards() {
+  if (isSystemAdmin()) return;
   const container = document.querySelector("#cards-list");
   const data = await fetchJson("/api/cards?limit=50");
   const items = data.items.filter((item) =>
@@ -420,6 +454,7 @@ function reviewPayload(form) {
 }
 
 async function loadContacts() {
+  if (isSystemAdmin()) return;
   const params = new URLSearchParams({ limit: "20" });
   if (state.contactsQuery) params.set("q", state.contactsQuery);
   if (state.companyClassification) {
@@ -547,8 +582,85 @@ async function deleteContact(contactId) {
   await refreshAll();
 }
 
+async function loadUsers() {
+  const data = await fetchJson("/api/users");
+  const body = document.querySelector("#users-body");
+  if (!data.items.length) {
+    body.innerHTML = `<tr><td colspan="6"><div class="empty">尚無用戶</div></td></tr>`;
+    return;
+  }
+  body.innerHTML = data.items
+    .map(
+      (user) => `
+      <tr>
+        <td>${escapeHtml(user.email)}</td>
+        <td>${escapeHtml(user.displayName)}</td>
+        <td>${escapeHtml(user.role)}</td>
+        <td>${escapeHtml(user.status)}</td>
+        <td>${escapeHtml(formatDate(user.lastLoginAt))}</td>
+        <td>
+          <div class="row-actions">
+            ${
+              user.status === "active"
+                ? `<button class="bare-icon danger" type="button" data-disable-user="${escapeHtml(user.id)}" title="停用" aria-label="停用">×</button>`
+                : `<button class="bare-icon" type="button" data-enable-user="${escapeHtml(user.id)}" title="啟用" aria-label="啟用">✓</button>`
+            }
+          </div>
+        </td>
+      </tr>
+    `,
+    )
+    .join("");
+}
+
+async function loadLogoRecords() {
+  const data = await fetchJson("/api/logo-records");
+  const list = document.querySelector("#logo-records-list");
+  if (!data.items.length) {
+    list.innerHTML = `<div class="empty">尚無 Logo 紀錄</div>`;
+    return;
+  }
+  list.innerHTML = data.items
+    .map(
+      (item) => `
+      <article class="list-item">
+        <div class="item-header">
+          <span class="badge">${item.isActive ? "啟用" : "紀錄"}</span>
+          <strong>${escapeHtml(item.fileName)}</strong>
+        </div>
+        <small>${escapeHtml(item.versionLabel || "")} ${escapeHtml(formatDate(item.createdAt))}</small>
+      </article>
+    `,
+    )
+    .join("");
+}
+
+async function refreshAdmin() {
+  if (!isSystemAdmin()) return;
+  await Promise.all([loadUsers(), loadLogoRecords()]);
+}
+
 async function refreshAll() {
+  if (isSystemAdmin()) {
+    await refreshAdmin();
+    return;
+  }
   await Promise.all([loadDashboard(), loadCards(), loadContacts()]);
+}
+
+async function initializeAuth() {
+  try {
+    const data = await fetchJson("/api/me");
+    showAuthenticated(data.user);
+    await refreshAll();
+  } catch (error) {
+    if (error.status === 401) {
+      showLogin();
+      return;
+    }
+    console.error(error);
+    showLogin();
+  }
 }
 
 document.querySelector("#card-file").addEventListener("change", (event) => {
@@ -579,6 +691,33 @@ document.querySelectorAll("[data-drop-zone]").forEach((zone) => {
     zone.classList.remove("is-dragging");
     assignDroppedFile(input, event.dataTransfer.files);
   });
+});
+
+document.querySelector("#login-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form).entries());
+  document.querySelector("#login-error").textContent = "";
+  try {
+    const data = await fetchJson("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values),
+    });
+    showAuthenticated(data.user);
+    await refreshAll();
+  } catch (error) {
+    document.querySelector("#login-error").textContent = error.message || "登入失敗";
+  }
+});
+
+document.querySelector("#logout-button").addEventListener("click", async () => {
+  try {
+    await fetchJson("/api/auth/logout", { method: "POST" });
+  } catch (error) {
+    console.error(error);
+  }
+  showLogin();
 });
 
 document.querySelector("#upload-form").addEventListener("submit", async (event) => {
@@ -703,6 +842,35 @@ document.querySelector("#contacts-body").addEventListener("click", async (event)
   }
 });
 
+document.querySelector("#refresh-users").addEventListener("click", refreshAdmin);
+
+document.querySelector("#user-create-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form).entries());
+  await fetchJson("/api/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(values),
+  });
+  form.reset();
+  await refreshAdmin();
+});
+
+document.querySelector("#users-body").addEventListener("click", async (event) => {
+  const disableButton = event.target.closest("[data-disable-user]");
+  if (disableButton) {
+    await fetchJson(`/api/users/${disableButton.dataset.disableUser}/disable`, { method: "POST" });
+    await refreshAdmin();
+    return;
+  }
+  const enableButton = event.target.closest("[data-enable-user]");
+  if (enableButton) {
+    await fetchJson(`/api/users/${enableButton.dataset.enableUser}/enable`, { method: "POST" });
+    await refreshAdmin();
+  }
+});
+
 document.querySelector("#upload-toast-close").addEventListener("click", () => {
   document.querySelector("#upload-toast").hidden = true;
   window.clearTimeout(state.toastTimer);
@@ -716,6 +884,6 @@ loadVersion().catch((error) => {
   console.error(error);
 });
 
-refreshAll().catch((error) => {
+initializeAuth().catch((error) => {
   console.error(error);
 });

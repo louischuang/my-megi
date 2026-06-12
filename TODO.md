@@ -161,25 +161,25 @@
 ## Phase 10: 多人使用與權限 MVP
 
 - [x] 完成多人使用、登入登出、角色權限、資料 owner 隔離與 API/schema 的規劃文件。
-- [ ] 建立 users / roles / user_roles / auth_sessions schema 與 migration。
-- [ ] 在 business_cards、contacts、relationship_notes 等使用者資料加入 `owner_user_id`。
-- [ ] 建立第一個系統管理員 seed 或 bootstrap 流程。
-- [ ] 建立登入頁與登入 API。
-- [ ] 建立登出 API，並讓 session/token 失效。
-- [ ] 建立目前登入使用者 API，例如 `GET /api/me`。
-- [ ] 建立使用者管理頁，僅系統管理員可進入。
-- [ ] 建立使用者列表、建立、啟用、停用、角色調整 API。
-- [ ] 實作角色導覽規則：系統管理員只能看到用戶管理與 Logo 紀錄。
-- [ ] 實作內容管理員全域名片與聯絡人查詢權限。
-- [ ] 實作一般用戶只能看到自己的名片與聯絡人。
-- [ ] 所有名片、聯絡人、分類與審核 API 套用後端權限檢查。
-- [ ] 上傳名片時自動寫入目前登入使用者為 owner。
-- [ ] 內容管理員列表顯示資料擁有者。
-- [ ] 建立 Logo 紀錄資料表與列表 API。
-- [ ] 建立 Logo 紀錄頁，僅系統管理員可看。
-- [ ] 更新 Swagger/OpenAPI 說明 authentication 與角色限制。
-- [ ] 更新 CLI 設定 token/session 的規劃。
-- [ ] 補足權限相關測試：未登入、角色不符、資料不屬於自己。
+- [x] 建立 users / roles / user_roles / auth_sessions schema 與 migration。
+- [x] 在 business_cards、contacts、relationship_notes 等使用者資料加入 `owner_user_id`。
+- [x] 建立第一個系統管理員 seed 或 bootstrap 流程。
+- [x] 建立登入頁與登入 API。
+- [x] 建立登出 API，並讓 session/token 失效。
+- [x] 建立目前登入使用者 API，例如 `GET /api/me`。
+- [x] 建立使用者管理頁，僅系統管理員可進入。
+- [x] 建立使用者列表、建立、啟用、停用、角色調整 API。
+- [x] 實作角色導覽規則：系統管理員只能看到用戶管理與 Logo 紀錄。
+- [x] 實作內容管理員全域名片與聯絡人查詢權限。
+- [x] 實作一般用戶只能看到自己的名片與聯絡人。
+- [x] 所有名片、聯絡人、分類與審核 API 套用後端權限檢查。
+- [x] 上傳名片時自動寫入目前登入使用者為 owner。
+- [x] 內容管理員列表顯示資料擁有者。
+- [x] 建立 Logo 紀錄資料表與列表 API。
+- [x] 建立 Logo 紀錄頁，僅系統管理員可看。
+- [x] 更新 Swagger/OpenAPI 說明 authentication 與角色限制。
+- [x] 更新 CLI 設定 token/session 的規劃。
+- [x] 補足權限相關測試：未登入、角色不符、資料不屬於自己。
 
 驗證方式：
 

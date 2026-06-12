@@ -1,6 +1,6 @@
 # Auth and RBAC MVP
 
-此文件規劃 My Megi 下一階段多人使用能力。目標是先完成可驗證的登入、登出、使用者管理、角色權限與資料隔離。
+此文件說明 My Megi Phase 10 多人使用能力。Phase 10 已完成可驗證的登入、登出、使用者管理、角色權限與資料隔離。
 
 ## Goals
 
@@ -58,7 +58,7 @@
 
 ## Authentication Model
 
-MVP 建議先採用 server-side session cookie：
+Phase 10 採用 server-side session cookie，並讓登入 API 同時回傳短效 `sessionToken` 供 CLI/API 以 Bearer token 使用：
 
 - 登入成功後建立 `auth_sessions`。
 - Cookie 只保存不可逆的 session token。
@@ -70,13 +70,13 @@ MVP 建議先採用 server-side session cookie：
 
 ## Data Ownership
 
-需要加入 owner 欄位：
+已加入 owner 欄位：
 
 - `business_cards.owner_user_id`
 - `contacts.owner_user_id`
 - `relationship_notes.owner_user_id`
 
-建議同時評估：
+目前設計：
 
 - `contact_methods`、`addresses` 可透過 `contacts.owner_user_id` 繼承，不一定需要重複 owner。
 - `companies` 目前可先作為共享主檔，但一般用戶只能透過自己的 contacts 看到公司關聯。
@@ -124,15 +124,16 @@ MVP 建議先採用 server-side session cookie：
 - `/api/classifications`
 - `/api/dashboard`
 
-## Migration Plan
+## Migration
+
+Phase 10 使用 `migrations/005_auth_rbac.sql`：
 
 1. 新增 `users`、`roles`、`user_roles`、`auth_sessions`、`logo_records`.
 2. 新增 `owner_user_id` 到 `business_cards`、`contacts`、`relationship_notes`.
-3. 建立 bootstrap system admin。
-4. 將既有資料指派給 bootstrap 或指定 migration owner。
-5. 將 `owner_user_id` 改為 required，或在 application layer 對舊資料做明確處理。
-6. 更新查詢與寫入 API，套用 owner 與角色。
-7. 更新 Web UI 導覽與登入/登出流程。
+3. 啟動時建立 bootstrap system admin。
+4. 啟動時將既有無 owner 資料指派給 bootstrap admin。
+5. 更新查詢與寫入 API，套用 owner 與角色。
+6. 更新 Web UI 導覽與登入/登出流程。
 
 ## Testing Requirements
 

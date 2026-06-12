@@ -75,6 +75,51 @@ def print_contact_row(item: dict[str, Any]) -> None:
 
 
 @app.command()
+def login(
+    email: Annotated[str, typer.Option("--email", prompt=True, help="Login email.")],
+    password: Annotated[
+        str,
+        typer.Option("--password", prompt=True, hide_input=True, help="Login password."),
+    ],
+    json_output: Annotated[bool, typer.Option("--json", help="Print raw JSON response.")] = False,
+) -> None:
+    """Login and print a session token for MYMEGI_API_TOKEN."""
+    payload = request_json("POST", "/api/auth/login", json={"email": email, "password": password})
+    if json_output:
+        dump_json(payload)
+        return
+    user = payload.get("user") or {}
+    token = payload.get("sessionToken")
+    typer.echo(f"Logged in: {user.get('displayName') or user.get('email')}")
+    typer.echo(f"Role: {user.get('role')}")
+    typer.echo("Set this token before running protected CLI commands:")
+    typer.echo(f"export MYMEGI_API_TOKEN={token}")
+
+
+@app.command()
+def logout() -> None:
+    """Revoke the current MYMEGI_API_TOKEN session."""
+    request_json("POST", "/api/auth/logout")
+    typer.echo("Logged out.")
+
+
+@app.command()
+def me(
+    json_output: Annotated[bool, typer.Option("--json", help="Print raw JSON response.")] = False,
+) -> None:
+    """Show the current authenticated user."""
+    payload = request_json("GET", "/api/me")
+    if json_output:
+        dump_json(payload)
+        return
+    user = payload.get("user") or {}
+    typer.echo(f"Email: {user.get('email')}")
+    typer.echo(f"Name: {user.get('displayName')}")
+    typer.echo(f"Role: {user.get('role')}")
+    typer.echo(f"Status: {user.get('status')}")
+
+
+@app.command()
 def health(
     json_output: Annotated[bool, typer.Option("--json", help="Print raw JSON response.")] = False,
 ) -> None:

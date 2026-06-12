@@ -7,11 +7,28 @@
     <link rel="stylesheet" href="/static/styles.css?v=20260612-centered-toast" />
   </head>
   <body>
+    <section class="login-screen" id="login-screen" hidden>
+      <form class="login-panel" id="login-form">
+        <img class="login-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
+        <h1>登入 My Megi</h1>
+        <label>
+          <span>Email</span>
+          <input name="email" type="email" autocomplete="username" value="admin@mymegi.local" required />
+        </label>
+        <label>
+          <span>密碼</span>
+          <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <button type="submit">登入</button>
+        <p id="login-error" class="error-text"></p>
+      </form>
+    </section>
+
     <header class="topbar">
       <div class="brand">
         <div class="brand-lockup" aria-label="My Megi">
           <img class="brand-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
-          <span class="app-version" data-app-version>v0.1.3</span>
+          <span class="app-version" data-app-version>v0.1.4</span>
         </div>
         <p>名片與人脈資料庫</p>
       </div>
@@ -43,6 +60,12 @@
         <a class="nav-icon" href="/docs" title="API" aria-label="API">
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m8 8-4 4 4 4"/><path d="m16 8 4 4-4 4"/><path d="m14 5-4 14"/></svg>
         </a>
+        <button class="nav-icon admin-only" type="button" data-main-tab="admin" title="用戶管理" aria-label="用戶管理" hidden>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </button>
+        <button class="nav-icon" type="button" id="logout-button" title="登出" aria-label="登出">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        </button>
       </nav>
     </header>
 
@@ -137,12 +160,72 @@
           </div>
         </div>
       </section>
+
+      <section class="main-panel" id="admin-panel" data-main-panel="admin" hidden>
+        <div class="panel">
+          <div class="panel-title">
+            <div>
+              <h2>用戶管理</h2>
+              <span id="current-user-label">未登入</span>
+            </div>
+            <button class="ghost" type="button" id="refresh-users">重新整理</button>
+          </div>
+          <div class="admin-grid">
+            <form id="user-create-form">
+              <div class="field-grid">
+                <label>
+                  <span>Email</span>
+                  <input name="email" type="email" required />
+                </label>
+                <label>
+                  <span>顯示名稱</span>
+                  <input name="displayName" type="text" required />
+                </label>
+              </div>
+              <div class="field-grid">
+                <label>
+                  <span>初始密碼</span>
+                  <input name="password" type="password" required />
+                </label>
+                <label>
+                  <span>角色</span>
+                  <select name="role">
+                    <option value="user">用戶</option>
+                    <option value="content_admin">內容管理員</option>
+                    <option value="system_admin">系統管理員</option>
+                  </select>
+                </label>
+              </div>
+              <button type="submit">建立用戶</button>
+            </form>
+            <div>
+              <h3>Logo 紀錄</h3>
+              <div class="list" id="logo-records-list"></div>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>名稱</th>
+                  <th>角色</th>
+                  <th>狀態</th>
+                  <th>最後登入</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody id="users-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
     </main>
 
     <footer class="site-footer">
       <span>開發者：Louis Chuang</span>
       <span>Copyright: 2026</span>
-      <span>版本號：<span data-app-version>v0.1.3</span></span>
+      <span>版本號：<span data-app-version>v0.1.4</span></span>
     </footer>
 
     <div class="modal" id="review-modal" hidden>

@@ -12,7 +12,7 @@ My Megi 是一個本地優先的名片資料管理網站。目標是讓使用者
 - 以 Docker Container 執行，支援本地與正式環境部署。
 - 提供 Web UI、HTTP API、CLI。
 - 提供完整 OpenAPI/Swagger API 文件。
-- 下一階段支援多人使用、登入/登出、使用者管理與角色權限控管。
+- 支援多人使用、登入/登出、使用者管理與角色權限控管。
 - 每完成一個可驗證階段後 commit / push。
 
 ## 建議技術架構
@@ -78,6 +78,10 @@ OPENAI_API_KEY=ollama
 LLM_MODEL=gemma4:e4b
 OCR_ENGINE=tesseract
 APP_ENV=local
+BOOTSTRAP_ADMIN_EMAIL=admin@mymegi.local
+BOOTSTRAP_ADMIN_PASSWORD=mymegi-admin
+BOOTSTRAP_ADMIN_NAME=My Megi Admin
+SESSION_DAYS=7
 ```
 
 目前本地測試使用主機上的 Ollama：
@@ -119,6 +123,8 @@ docker compose up --build
 - Swagger UI: `http://localhost:8000/docs`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
 
+第一次啟動會依環境變數建立 bootstrap 系統管理員。預設測試帳號是 `admin@mymegi.local` / `mymegi-admin`，正式環境必須改掉密碼。
+
 CLI 安裝後可先檢查服務：
 
 ```bash
@@ -127,6 +133,8 @@ mymegi health
 
 目前 Web UI 提供：
 
+- 登入、登出與依角色切換導覽。
+- 系統管理員用戶管理與 Logo 紀錄頁。
 - Dashboard 統計聯絡人、公司、名片與待處理名片數。
 - 名片上傳表單，支援認識場合、日期與備註。
 - 最近匯入名片列表。
@@ -136,6 +144,10 @@ mymegi health
 
 API 會以 OpenAPI/Swagger 文件公開，初期端點包含：
 
+- `POST /api/auth/login`: 登入並取得 session cookie 與 `sessionToken`。
+- `POST /api/auth/logout`: 登出並撤銷目前 session。
+- `GET /api/me`: 取得目前登入使用者。
+- `GET /api/users`: 系統管理員使用者列表。
 - `POST /api/cards/upload`: 上傳名片。
 - `GET /api/cards/{id}`: 取得名片處理結果。
 - `POST /api/cards/{id}/extract`: 重新執行 OCR。
@@ -150,6 +162,7 @@ API 會以 OpenAPI/Swagger 文件公開，初期端點包含：
 CLI 會呼叫同一組 API，例如：
 
 ```bash
+export MYMEGI_API_TOKEN="登入 API 回傳的 sessionToken"
 mymegi upload ./cards/alice.jpg --met-at "2026 台北展會"
 mymegi contacts search --company "Example Inc"
 mymegi contacts show CONTACT_ID
@@ -169,12 +182,12 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 - 地區分類若要準確，應導入地址標準化或行政區資料表。
 - Ollama 的 vision 能力取決於安裝模型；不是所有 Ollama 模型都能讀圖。
 - 正式環境若仍使用本地 LLM，需準備 GPU/CPU 資源與模型管理策略。
-- API 若開放第三方服務使用，必須加上 authentication、rate limit、audit log。
-- 多人使用後必須先補齊資料擁有者欄位與查詢層權限過濾，不能只靠前端隱藏資料。
+- API 若開放第三方服務使用，必須加上正式 API token、rate limit、audit log。
+- 多人使用已完成基本資料擁有者欄位與查詢層權限過濾；後續仍需補正式第三方 API token 與更完整 audit log。
 
-## 下一階段：多人與權限 MVP
+## 已完成：多人與權限 MVP
 
-下一階段目標是將 My Megi 從單人本地工具擴充為多人可使用的平台。詳細規劃見 [docs/AUTH_RBAC.md](docs/AUTH_RBAC.md)。
+My Megi 已從單人本地工具擴充為多人可使用的平台。詳細設計與驗證範圍見 [docs/AUTH_RBAC.md](docs/AUTH_RBAC.md)。
 
 角色範圍：
 
@@ -182,10 +195,10 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 - 內容管理員：可以看到所有人的名片、聯絡人與審核資料。
 - 用戶：只能看到自己的名片與聯絡人。
 
-必備能力：
+已完成能力：
 
 - 登入介面與登出功能。
-- 使用者管理、停用帳號、重設初始密碼或邀請流程。
+- 使用者管理、停用帳號、角色調整與建立初始密碼。
 - API 與 Web UI 皆套用相同權限規則。
 - 所有名片與聯絡人查詢依角色進行資料隔離。
 
@@ -200,7 +213,7 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 7. 查詢 UI。
 8. OpenAPI/Swagger 與 CLI。
 9. 多人登入、權限與資料隔離。
-10. 備份、正式環境部署。
+10. 備份、正式環境部署與第三方 API token。
 
 ## Git 工作規範
 
