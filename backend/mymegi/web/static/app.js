@@ -328,6 +328,11 @@ async function loadContacts() {
     .join("");
 }
 
+async function openContactsModal() {
+  await loadContacts();
+  openModal("contacts");
+}
+
 function renderContactDetail(contact) {
   const methods = contact.methods?.length
     ? contact.methods.map((method) => `${method.type}: ${method.value}`).join(", ")
@@ -457,13 +462,15 @@ document.querySelectorAll("[data-card-tab]").forEach((button) => {
   });
 });
 
-document.querySelector("#open-contacts").addEventListener("click", async () => {
-  await loadContacts();
-  openModal("contacts");
-});
-
 document.querySelectorAll("[data-close-modal]").forEach((button) => {
   button.addEventListener("click", () => closeModal(button.dataset.closeModal));
+});
+
+document.addEventListener("click", async (event) => {
+  const contactsButton = event.target.closest("#open-contacts");
+  if (!contactsButton) return;
+  event.preventDefault();
+  await openContactsModal();
 });
 
 document.addEventListener("keydown", (event) => {
@@ -525,6 +532,10 @@ document.querySelector("#contacts-body").addEventListener("click", async (event)
     await deleteContact(deleteButton.dataset.deleteContact);
   }
 });
+
+if (window.location.hash === "#contacts") {
+  openContactsModal().catch((error) => console.error(error));
+}
 
 refreshAll().catch((error) => {
   console.error(error);
