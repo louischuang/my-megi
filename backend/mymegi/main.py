@@ -1138,6 +1138,153 @@ async def list_contacts(
     }
 
 
+@app.get("/api/contacts/{contact_id}")
+async def get_contact(contact_id: UUID) -> dict[str, Any]:
+    async with database.acquire() as connection:
+        row = await connection.fetchrow(
+            """
+            select
+              c.id,
+              c.display_name,
+              c.english_name,
+              c.title,
+              c.notes,
+              c.extra_notes,
+              c.created_at,
+              c.updated_at,
+              comp.name as company_name,
+              comp.english_name as company_english_name,
+              comp.tax_id,
+              comp.industry,
+              bc.id as business_card_id,
+              bc.original_filename as business_card_file_name
+            from contacts c
+            left join companies comp on comp.id = c.company_id
+            left join business_cards bc on bc.id = c.source_business_card_id
+            where c.id = $1
+              and c.deleted_at is null
+            """,
+            contact_id,
+        )
+        if row is None:
+            raise HTTPException(status_code=404, detail="Contact not found")
+
+        methods = await connection.fetch(
+            """
+            select method_type, label, value, is_primary
+            from contact_methods
+            where contact_id = $1
+            order by is_primary desc, method_type, created_at
+            """,
+            contact_id,
+        )
+        addresses = await connection.fetch(
+            """
+            select label, country, region, city, district, raw_address, english_address
+            from addresses
+            where contact_id = $1
+            order by created_at
+            """,
+            contact_id,
+        )
+        notes = await connection.fetch(
+            """
+            select met_at, met_on, summary, next_action, next_action_due_on, created_at
+            from relationship_notes
+            where contact_id = $1
+            order by coalesce(met_on, created_at::date) desc, created_at desc
+            """,
+            contact_id,
+        )
+        classifications = await connection.fetch(
+            """
+            select ct.code, cl.name
+            from contact_classifications cc
+            join classifications cl on cl.id = cc.classification_id
+            join classification_types ct on ct.id = cl.type_id
+            where cc.contact_id = $1
+            order by ct.code, cl.name
+            """,
+            contact_id,
+        )
+
+    grouped_classifications: dict[str, list[str]] = {}
+    for classification in classifications:
+        grouped_classifications.setdefault(classification["code"], []).append(classification["name"])
+
+    return {
+        "id": str(row["id"]),
+        "name": row["display_name"],
+        "englishName": row["english_name"],
+        "title": row["title"],
+        "company": {
+            "name": row["company_name"],
+            "englishName": row["company_english_name"],
+            "taxId": row["tax_id"],
+            "industry": row["industry"],
+        },
+        "methods": [
+            {
+                "type": method["method_type"],
+                "label": method["label"],
+                "value": method["value"],
+                "isPrimary": method["is_primary"],
+            }
+            for method in methods
+        ],
+        "addresses": [
+            {
+                "label": address["label"],
+                "country": address["country"],
+                "region": address["region"],
+                "city": address["city"],
+                "district": address["district"],
+                "raw": address["raw_address"],
+                "english": address["english_address"],
+            }
+            for address in addresses
+        ],
+        "relationshipNotes": [
+            {
+                "metAt": note["met_at"],
+                "metOn": note["met_on"].isoformat() if note["met_on"] else None,
+                "summary": note["summary"],
+                "nextAction": note["next_action"],
+                "nextActionDueOn": note["next_action_due_on"].isoformat() if note["next_action_due_on"] else None,
+                "createdAt": note["created_at"].isoformat(),
+            }
+            for note in notes
+        ],
+        "classifications": grouped_classifications,
+        "notes": row["notes"],
+        "extraNotes": row["extra_notes"],
+        "businessCard": {
+            "id": str(row["business_card_id"]) if row["business_card_id"] else None,
+            "fileName": row["business_card_file_name"],
+        },
+        "createdAt": row["created_at"].isoformat(),
+        "updatedAt": row["updated_at"].isoformat(),
+    }
+
+
+@app.delete("/api/contacts/{contact_id}")
+async def delete_contact(contact_id: UUID) -> dict[str, Any]:
+    async with database.acquire() as connection:
+        result = await connection.execute(
+            """
+            update contacts
+            set deleted_at = now(),
+                updated_at = now()
+            where id = $1
+              and deleted_at is null
+            """,
+            contact_id,
+        )
+    if result == "UPDATE 0":
+        raise HTTPException(status_code=404, detail="Contact not found")
+    return {"id": str(contact_id), "status": "deleted"}
+
+
 @app.get("/api/classifications")
 async def list_classifications(type: str | None = None) -> dict[str, Any]:
     params: list[Any] = []

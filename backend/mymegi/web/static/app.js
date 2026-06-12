@@ -4,6 +4,7 @@ const state = {
   regionClassification: "",
   industryClassification: "",
   selectedCardId: null,
+  cardReviewTab: "pending",
 };
 
 const formatDate = (value) => {
@@ -56,6 +57,7 @@ const classificationText = (classifications) => {
   return values.length ? values.join(", ") : "";
 };
 const percentText = (value) => (value == null ? "未評估" : `${Math.round(Number(value) * 100)}%`);
+const isAutoReviewed = (item) => item.reviewStatus === "completed" && Number(item.confidence || 0) > 0.9;
 const statusText = (value) =>
   ({
     completed: "已入庫",
@@ -98,6 +100,11 @@ function closeModal(name) {
   }
 }
 
+function detailValue(value) {
+  const text = Array.isArray(value) ? value.filter(Boolean).join(", ") : value;
+  return escapeHtml(text || "未填寫");
+}
+
 async function loadDashboard() {
   const data = await fetchJson("/api/dashboard");
   document.querySelector("#metric-contacts").textContent = data.contacts;
@@ -108,22 +115,26 @@ async function loadDashboard() {
 
 async function loadCards() {
   const container = document.querySelector("#cards-list");
-  const data = await fetchJson("/api/cards?limit=8");
-  if (!data.items.length) {
+  const data = await fetchJson("/api/cards?limit=50");
+  const items = data.items.filter((item) =>
+    state.cardReviewTab === "completed" ? item.reviewStatus === "completed" : item.reviewStatus !== "completed",
+  );
+  if (!items.length) {
     container.innerHTML = `<div class="empty">尚無匯入名片</div>`;
     return;
   }
-  container.innerHTML = data.items
+  container.innerHTML = items
     .map(
       (item) => {
         const draft = parseDraft(item.extractedData);
         const companyName = draft.company?.name || draft.company?.englishName || "";
         const draftText = [draft.name, companyName].filter(Boolean).join(" · ");
         const fileNames = [item.fileName, item.backFileName].filter(Boolean).join(" / ");
+        const autoReviewed = isAutoReviewed(item);
         return `
         <article class="list-item">
           <div class="item-header">
-            <span class="badge">${escapeHtml(statusText(item.reviewStatus))}</span>
+            <span class="badge">${escapeHtml(autoReviewed ? "自動審核" : statusText(item.reviewStatus))}</span>
             <strong title="${escapeHtml(fileNames)}">${escapeHtml(fileNames)}</strong>
           </div>
           <div class="item-row">
@@ -293,7 +304,7 @@ async function loadContacts() {
   const data = await fetchJson(`/api/contacts?${params.toString()}`);
   const body = document.querySelector("#contacts-body");
   if (!data.items.length) {
-    body.innerHTML = `<tr><td colspan="5"><div class="empty">尚無聯絡人資料</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="6"><div class="empty">尚無聯絡人資料</div></td></tr>`;
     return;
   }
   body.innerHTML = data.items
@@ -305,10 +316,84 @@ async function loadContacts() {
           <td>${escapeHtml(item.title)}</td>
           <td>${escapeHtml(classificationText(item.classifications))}</td>
           <td>${formatDate(item.createdAt)}</td>
+          <td>
+            <div class="row-actions">
+              <button class="bare-icon" type="button" data-view-contact="${escapeHtml(item.id)}" title="檢視" aria-label="檢視">⌕</button>
+              <button class="bare-icon danger" type="button" data-delete-contact="${escapeHtml(item.id)}" title="刪除" aria-label="刪除">×</button>
+            </div>
+          </td>
         </tr>
       `,
     )
     .join("");
+}
+
+function renderContactDetail(contact) {
+  const methods = contact.methods?.length
+    ? contact.methods.map((method) => `${method.type}: ${method.value}`).join(", ")
+    : "";
+  const addresses = contact.addresses?.length
+    ? contact.addresses.map((address) => [address.raw, address.english].filter(Boolean).join(" / ")).join(", ")
+    : "";
+  const relationshipNotes = contact.relationshipNotes?.length
+    ? contact.relationshipNotes
+        .map((note) => [note.metOn, note.metAt, note.summary].filter(Boolean).join(" · "))
+        .join("\n")
+    : "";
+  const classifications = [
+    ["公司分類", contact.classifications?.company],
+    ["地區分類", contact.classifications?.region],
+    ["產業分類", contact.classifications?.industry],
+  ];
+  document.querySelector("#contact-detail").innerHTML = `
+    <section>
+      <h3>基本資料</h3>
+      <dl>
+        <dt>姓名</dt><dd>${detailValue(contact.name)}</dd>
+        <dt>英文名</dt><dd>${detailValue(contact.englishName)}</dd>
+        <dt>職稱</dt><dd>${detailValue(contact.title)}</dd>
+        <dt>建立時間</dt><dd>${detailValue(formatDate(contact.createdAt))}</dd>
+      </dl>
+    </section>
+    <section>
+      <h3>公司</h3>
+      <dl>
+        <dt>公司中文</dt><dd>${detailValue(contact.company?.name)}</dd>
+        <dt>公司英文</dt><dd>${detailValue(contact.company?.englishName)}</dd>
+        <dt>統編</dt><dd>${detailValue(contact.company?.taxId)}</dd>
+        <dt>產業</dt><dd>${detailValue(contact.company?.industry)}</dd>
+      </dl>
+    </section>
+    <section>
+      <h3>聯絡方式與地址</h3>
+      <dl>
+        <dt>聯絡方式</dt><dd>${detailValue(methods)}</dd>
+        <dt>地址</dt><dd>${detailValue(addresses)}</dd>
+        <dt>來源名片</dt><dd>${detailValue(contact.businessCard?.fileName)}</dd>
+      </dl>
+    </section>
+    <section>
+      <h3>分類與備註</h3>
+      <dl>
+        ${classifications.map(([label, values]) => `<dt>${label}</dt><dd>${detailValue(values)}</dd>`).join("")}
+        <dt>認識紀錄</dt><dd>${detailValue(relationshipNotes)}</dd>
+        <dt>備註</dt><dd>${detailValue(contact.notes)}</dd>
+        <dt>名片額外備註</dt><dd>${detailValue(contact.extraNotes)}</dd>
+      </dl>
+    </section>
+  `;
+}
+
+async function viewContact(contactId) {
+  const contact = await fetchJson(`/api/contacts/${contactId}`);
+  renderContactDetail(contact);
+  openModal("contact-detail");
+}
+
+async function deleteContact(contactId) {
+  if (!window.confirm("確定刪除此聯絡人？")) return;
+  await fetchJson(`/api/contacts/${contactId}`, { method: "DELETE" });
+  await refreshAll();
 }
 
 async function refreshAll() {
@@ -360,6 +445,18 @@ document.querySelector("#upload-form").addEventListener("submit", async (event) 
 
 document.querySelector("#refresh-cards").addEventListener("click", loadCards);
 
+document.querySelectorAll("[data-card-tab]").forEach((button) => {
+  button.addEventListener("click", async () => {
+    state.cardReviewTab = button.dataset.cardTab;
+    document.querySelectorAll("[data-card-tab]").forEach((tab) => {
+      const selected = tab === button;
+      tab.classList.toggle("is-active", selected);
+      tab.setAttribute("aria-selected", String(selected));
+    });
+    await loadCards();
+  });
+});
+
 document.querySelector("#open-contacts").addEventListener("click", async () => {
   await loadContacts();
   openModal("contacts");
@@ -373,6 +470,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   closeModal("review");
   closeModal("contacts");
+  closeModal("contact-detail");
 });
 
 document.querySelector("#cards-list").addEventListener("click", async (event) => {
@@ -414,6 +512,18 @@ document.querySelector("#contact-search").addEventListener("submit", async (even
   state.regionClassification = form.get("regionClassification").trim();
   state.industryClassification = form.get("industryClassification").trim();
   await loadContacts();
+});
+
+document.querySelector("#contacts-body").addEventListener("click", async (event) => {
+  const viewButton = event.target.closest("[data-view-contact]");
+  if (viewButton) {
+    await viewContact(viewButton.dataset.viewContact);
+    return;
+  }
+  const deleteButton = event.target.closest("[data-delete-contact]");
+  if (deleteButton) {
+    await deleteContact(deleteButton.dataset.deleteContact);
+  }
 });
 
 refreshAll().catch((error) => {

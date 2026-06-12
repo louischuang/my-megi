@@ -81,6 +81,10 @@
             <h2>最近匯入</h2>
             <button class="ghost" type="button" id="refresh-cards">重新整理</button>
           </div>
+          <div class="tabs" role="tablist" aria-label="最近匯入狀態">
+            <button class="tab is-active" type="button" role="tab" aria-selected="true" data-card-tab="pending">未審核</button>
+            <button class="tab" type="button" role="tab" aria-selected="false" data-card-tab="completed">已審核</button>
+          </div>
           <div class="list" id="cards-list"></div>
         </div>
       </section>
@@ -242,11 +246,23 @@
                 <th>職稱</th>
                 <th>分類</th>
                 <th>建立時間</th>
+                <th>操作</th>
               </tr>
             </thead>
             <tbody id="contacts-body"></tbody>
           </table>
         </div>
+      </section>
+    </div>
+
+    <div class="modal" id="contact-detail-modal" hidden>
+      <div class="modal-backdrop" data-close-modal="contact-detail"></div>
+      <section class="panel contact-detail-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="contact-detail-title">
+        <div class="panel-title">
+          <h2 id="contact-detail-title">聯絡人資訊</h2>
+          <button class="ghost compact" type="button" data-close-modal="contact-detail">關閉</button>
+        </div>
+        <div class="detail-grid" id="contact-detail"></div>
       </section>
     </div>
 

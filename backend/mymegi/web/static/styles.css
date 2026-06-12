@@ -246,6 +246,31 @@ textarea {
   gap: 10px;
 }
 
+.tabs {
+  display: inline-flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f9fbfb;
+}
+
+.tab {
+  min-height: 32px;
+  border-color: transparent;
+  padding: 5px 12px;
+  background: transparent;
+  font-size: 13px;
+}
+
+.tab.is-active {
+  border-color: var(--line);
+  background: var(--surface);
+  box-shadow: 0 3px 10px rgb(20 35 38 / 7%);
+  font-weight: 700;
+}
+
 .list-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -355,6 +380,34 @@ button.compact {
   line-height: 1;
 }
 
+.row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bare-icon {
+  min-height: 28px;
+  width: 28px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--muted);
+  display: inline-grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.bare-icon:hover {
+  color: var(--accent);
+}
+
+.bare-icon.danger:hover {
+  color: #b42318;
+}
+
 .review-empty {
   min-height: 140px;
   display: grid;
@@ -458,6 +511,47 @@ button.compact {
   width: min(1040px, 100%);
 }
 
+.contact-detail-panel {
+  width: min(900px, 100%);
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.detail-grid section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  background: #fbfcfc;
+}
+
+.detail-grid h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.detail-grid dl {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 8px 10px;
+  margin: 0;
+}
+
+.detail-grid dt {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.detail-grid dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
 .table-wrap {
   overflow-x: auto;
 }
@@ -474,6 +568,12 @@ td {
   border-bottom: 1px solid var(--line);
   text-align: left;
   white-space: nowrap;
+}
+
+th:last-child,
+td:last-child {
+  width: 72px;
+  text-align: right;
 }
 
 th {
@@ -502,6 +602,7 @@ th {
 
   nav,
   .status-grid,
+  .detail-grid,
   .search {
     width: 100%;
   }
@@ -515,6 +616,7 @@ th {
   .workspace,
   .field-grid,
   .field-grid.three,
+  .detail-grid,
   .review-workbench,
   .search {
     grid-template-columns: 1fr;
