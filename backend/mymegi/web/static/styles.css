@@ -36,7 +36,7 @@ body.modal-open {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(260px, 340px) minmax(360px, 1fr) auto;
+  grid-template-columns: minmax(210px, 260px) minmax(360px, 1fr) auto;
   align-items: center;
   gap: 18px;
   padding: 16px clamp(20px, 4vw, 48px);
@@ -83,8 +83,8 @@ td {
 }
 
 .brand-logo {
-  width: min(236px, 62vw);
-  height: 66px;
+  width: min(165px, 56vw);
+  height: 46px;
   display: block;
   object-fit: contain;
   object-position: left center;

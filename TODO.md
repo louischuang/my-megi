@@ -133,10 +133,10 @@
 
 ## Phase 8: 搜尋與查詢
 
-- [ ] Web UI 搜尋。
-- [ ] API 搜尋。
+- [x] Web UI 搜尋。
+- [x] API 搜尋。
 - [ ] CLI 搜尋。
-- [ ] 聯絡人詳情頁。
+- [x] 聯絡人詳情頁。
 
 驗證方式：
 
@@ -144,8 +144,8 @@
 
 ## Phase 9: OpenAPI/Swagger 與 CLI
 
-- [ ] Swagger UI。
-- [ ] OpenAPI JSON 匯出。
+- [x] Swagger UI。
+- [x] OpenAPI JSON 匯出。
 - [ ] CLI `upload`。
 - [ ] CLI `contacts search`。
 - [ ] CLI `contacts show`。
