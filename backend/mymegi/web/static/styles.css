@@ -1,15 +1,19 @@
 :root {
-  color-scheme: light;
-  --bg: #f6f7f9;
-  --surface: #ffffff;
-  --surface-2: #eef3f2;
-  --ink: #1d2528;
-  --muted: #647176;
-  --line: #d9e0e2;
-  --accent: #0f766e;
+  color-scheme: dark;
+  --bg: #0c1018;
+  --surface: #171d29;
+  --surface-2: #222a38;
+  --surface-3: #111721;
+  --ink: #f7f8fb;
+  --muted: #aab4c2;
+  --line: #30394a;
+  --accent: #ff4fa3;
   --accent-ink: #ffffff;
-  --warning: #ad6200;
-  --shadow: 0 10px 30px rgb(20 35 38 / 8%);
+  --topbar: #f02a3f;
+  --topbar-deep: #c9152b;
+  --warning: #ffc857;
+  --danger: #ff6b6b;
+  --shadow: 0 18px 48px rgb(0 0 0 / 28%);
 }
 
 * {
@@ -18,7 +22,9 @@
 
 body {
   margin: 0;
-  background: var(--bg);
+  background:
+    radial-gradient(circle at 15% 0%, rgb(255 79 163 / 16%), transparent 32%),
+    linear-gradient(180deg, #111622 0%, var(--bg) 42%);
   color: var(--ink);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
@@ -30,12 +36,15 @@ body.modal-open {
 
 .topbar {
   display: grid;
-  grid-template-columns: minmax(160px, 240px) minmax(360px, 1fr) auto;
+  grid-template-columns: minmax(210px, 280px) minmax(360px, 1fr) auto;
   align-items: center;
   gap: 18px;
   padding: 16px clamp(20px, 4vw, 48px);
-  background: #fbfcfc;
-  border-bottom: 1px solid var(--line);
+  background:
+    linear-gradient(135deg, var(--topbar) 0%, var(--topbar-deep) 72%),
+    var(--topbar);
+  border-bottom: 1px solid rgb(255 255 255 / 16%);
+  box-shadow: 0 18px 42px rgb(0 0 0 / 22%);
 }
 
 .brand {
@@ -48,23 +57,44 @@ p {
   margin: 0;
 }
 
-h1 {
-  font-size: 28px;
-  font-weight: 750;
-}
-
 h2 {
   font-size: 18px;
   font-weight: 720;
 }
 
 .topbar p,
+.topbar .app-version {
+  color: rgb(255 255 255 / 76%);
+}
+
 .metric span,
 label span,
 .file-meta,
 .empty,
 td {
   color: var(--muted);
+}
+
+.brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.brand-logo {
+  width: min(176px, 54vw);
+  height: 52px;
+  display: block;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.app-version {
+  margin-left: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 
 .top-actions {
@@ -78,7 +108,7 @@ button {
   border-radius: 8px;
   border: 1px solid var(--line);
   padding: 9px 14px;
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--ink);
   text-decoration: none;
   font: inherit;
@@ -92,7 +122,7 @@ button {
   border-radius: 0;
   padding: 0;
   background: transparent;
-  color: var(--muted);
+  color: rgb(255 255 255 / 78%);
   display: inline-grid;
   place-items: center;
   text-decoration: none;
@@ -102,9 +132,20 @@ button {
   cursor: pointer;
 }
 
+.top-actions .nav-icon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .top-actions .nav-icon:hover,
 .top-actions .nav-icon.is-active {
-  color: var(--accent);
+  color: #fff;
+  filter: drop-shadow(0 0 10px rgb(255 79 163 / 80%));
 }
 
 button[type="submit"] {
@@ -144,6 +185,9 @@ main {
   padding: 10px 12px;
   display: grid;
   align-content: space-between;
+  background: rgb(23 29 41 / 78%);
+  border-color: rgb(255 255 255 / 18%);
+  box-shadow: 0 12px 28px rgb(0 0 0 / 18%);
 }
 
 .metric strong {
@@ -154,15 +198,16 @@ main {
 .metric span {
   font-size: 12px;
   line-height: 1.2;
+  color: rgb(255 255 255 / 72%);
 }
 
 .metric.attention {
-  background: #fff8ed;
-  border-color: #efd1a8;
+  background: rgb(255 79 163 / 18%);
+  border-color: rgb(255 255 255 / 26%);
 }
 
 .metric.attention strong {
-  color: var(--warning);
+  color: #fff;
 }
 
 .workspace {
@@ -218,10 +263,15 @@ textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface-3);
   color: var(--ink);
   font: inherit;
   padding: 10px 12px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #768294;
 }
 
 textarea {
@@ -249,9 +299,9 @@ textarea {
   display: grid;
   place-content: center;
   text-align: center;
-  border: 1px dashed #9eb2b5;
+  border: 1px dashed #4b5568;
   border-radius: 8px;
-  background: #f9fbfb;
+  background: #101722;
   cursor: pointer;
 }
 
@@ -274,7 +324,7 @@ textarea {
 
 .file-drop.is-dragging {
   border-color: var(--accent);
-  background: #eef8f6;
+  background: rgb(255 79 163 / 10%);
 }
 
 .upload-panel {
@@ -293,7 +343,7 @@ textarea {
   display: grid;
   place-items: center;
   border-radius: 8px;
-  background: rgb(255 255 255 / 72%);
+  background: rgb(12 16 24 / 76%);
   color: var(--accent);
   font-weight: 720;
 }
@@ -310,7 +360,7 @@ textarea {
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #f9fbfb;
+  background: var(--surface-3);
 }
 
 .tab {
@@ -324,7 +374,7 @@ textarea {
 .tab.is-active {
   border-color: var(--line);
   background: var(--surface);
-  box-shadow: 0 3px 10px rgb(20 35 38 / 7%);
+  box-shadow: 0 8px 18px rgb(0 0 0 / 22%);
   font-weight: 700;
 }
 
@@ -337,7 +387,7 @@ textarea {
   padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fbfcfc;
+  background: var(--surface-3);
 }
 
 .item-header {
@@ -392,7 +442,7 @@ textarea {
 }
 
 .error-text {
-  color: #a73a3a;
+  color: var(--danger);
 }
 
 .draft-text {
@@ -462,7 +512,7 @@ button.compact {
 }
 
 .bare-icon.danger:hover {
-  color: #b42318;
+  color: var(--danger);
 }
 
 .review-empty {
@@ -471,7 +521,7 @@ button.compact {
   place-items: center;
   border: 1px dashed var(--line);
   border-radius: 8px;
-  background: #fbfcfc;
+  background: var(--surface-3);
   color: var(--muted);
 }
 
@@ -501,7 +551,7 @@ button.compact {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #eef3f2;
+  background: var(--surface-3);
   margin: 0;
 }
 
@@ -510,7 +560,7 @@ button.compact {
   color: var(--muted);
   font-size: 13px;
   border-bottom: 1px solid var(--line);
-  background: #f9fbfb;
+  background: var(--surface-2);
 }
 
 .card-preview img,
@@ -592,7 +642,7 @@ button.compact {
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgb(29 37 40 / 42%);
+  background: rgb(0 0 0 / 62%);
 }
 
 .modal-panel {
@@ -621,7 +671,7 @@ button.compact {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 14px;
-  background: #fbfcfc;
+  background: var(--surface-3);
 }
 
 .detail-grid h3 {
@@ -683,7 +733,7 @@ th {
   place-items: center;
   border: 1px dashed var(--line);
   border-radius: 8px;
-  background: #fbfcfc;
+  background: var(--surface-3);
 }
 
 @media (max-width: 840px) {

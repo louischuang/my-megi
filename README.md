@@ -98,6 +98,7 @@ LLM_MODEL=gemma4:e4b
 ## 本地開發
 
 目前專案採用 Python/FastAPI 後端，CLI 會透過同一組 HTTP API 操作系統。
+服務版號以 `package.json` 的 `version` 為準，Web UI 與 Swagger/OpenAPI 會使用同一個版號來源。
 
 ```bash
 cp .env.example .env

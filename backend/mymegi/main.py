@@ -22,8 +22,10 @@ from mymegi.ocr import OcrError, render_oriented_preview, run_tesseract_ocr
 
 
 APP_DIR = Path(__file__).resolve().parent
+ROOT_DIR = APP_DIR.parent.parent
 WEB_DIR = APP_DIR / "web"
 STATIC_DIR = WEB_DIR / "static"
+PACKAGE_JSON = ROOT_DIR / "package.json"
 
 register_heif_opener()
 
@@ -38,6 +40,16 @@ def json_object(value: Any) -> dict[str, Any]:
             return {}
         return parsed if isinstance(parsed, dict) else {}
     return {}
+
+
+def app_version() -> str:
+    try:
+        with PACKAGE_JSON.open() as package_file:
+            package = json.load(package_file)
+    except (OSError, json.JSONDecodeError):
+        return "0.0.0"
+    version = package.get("version")
+    return version if isinstance(version, str) and version.strip() else "0.0.0"
 
 
 def normalize_lookup(value: str) -> str:
@@ -215,7 +227,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="My Megi API",
-    version="0.1.0",
+    version=app_version(),
     description="Local-first business card and relationship manager.",
     openapi_url="/openapi.json",
     docs_url="/docs",
@@ -244,6 +256,11 @@ async def health() -> dict[str, Any]:
         "ocrEngine": settings.ocr_engine,
         "llmModel": settings.llm_model,
     }
+
+
+@app.get("/api/version")
+async def version() -> dict[str, str]:
+    return {"version": app_version()}
 
 
 @app.get("/api/dashboard")

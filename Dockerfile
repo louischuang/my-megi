@@ -9,7 +9,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends tesseract-ocr tesseract-ocr-eng tesseract-ocr-chi-tra curl \
   && rm -rf /var/lib/apt/lists/*
 
-COPY pyproject.toml README.md /app/
+COPY pyproject.toml README.md package.json /app/
 COPY backend /app/backend
 COPY cli /app/cli
 
@@ -19,4 +19,3 @@ RUN pip install --no-cache-dir --upgrade pip \
 EXPOSE 8000
 
 CMD ["uvicorn", "mymegi.main:app", "--host", "0.0.0.0", "--port", "8000"]
-

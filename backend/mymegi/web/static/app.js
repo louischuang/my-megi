@@ -154,6 +154,17 @@ async function loadDashboard() {
   document.querySelector("#metric-pending").textContent = data.pendingCards;
 }
 
+async function loadVersion() {
+  const versionLabel = document.querySelector("#app-version");
+  if (!versionLabel) return;
+  try {
+    const data = await fetchJson("/api/version");
+    versionLabel.textContent = `v${data.version}`;
+  } catch (error) {
+    console.error(error);
+  }
+}
+
 async function loadCards() {
   const container = document.querySelector("#cards-list");
   const data = await fetchJson("/api/cards?limit=50");
@@ -596,6 +607,10 @@ document.querySelector("#upload-toast-close").addEventListener("click", () => {
 if (window.location.hash === "#contacts") {
   openContactsPanel().catch((error) => console.error(error));
 }
+
+loadVersion().catch((error) => {
+  console.error(error);
+});
 
 refreshAll().catch((error) => {
   console.error(error);
