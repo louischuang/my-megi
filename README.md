@@ -12,6 +12,7 @@ My Megi 是一個本地優先的名片資料管理網站。目標是讓使用者
 - 以 Docker Container 執行，支援本地與正式環境部署。
 - 提供 Web UI、HTTP API、CLI。
 - 提供完整 OpenAPI/Swagger API 文件。
+- 下一階段支援多人使用、登入/登出、使用者管理與角色權限控管。
 - 每完成一個可驗證階段後 commit / push。
 
 ## 建議技術架構
@@ -26,6 +27,7 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 - LLM: Ollama，透過 OpenAI-compatible API endpoint 呼叫。
 - API docs: OpenAPI 3.1 + Swagger UI。
 - CLI: 以同一組 HTTP API 實作，避免 CLI 與 Web 後端邏輯分裂。
+- Auth/RBAC: 以伺服器端 session 或短效存取 token 管理登入狀態，並以角色控管 Web UI 與 API 可見資料。
 - Container: `docker compose` 啟動 app、database、ollama adaptor 或連接外部 Ollama。
 
 ## 資料流程
@@ -39,6 +41,8 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 7. 寫入聯絡人、公司、地區、產業、互動紀錄等資料表。
 8. 透過 Web UI、API 或 CLI 查詢。
 
+多人版流程會在上述流程前加入登入檢查，並在建立名片、聯絡人、公司關聯與互動紀錄時寫入 `owner_user_id`。一般用戶只能讀寫自己的資料；內容管理員可查詢所有用戶的名片與聯絡人；系統管理員僅能進入用戶管理與 Logo 紀錄等系統管理畫面。
+
 ## 主要資料模型
 
 - `contacts`: 中文姓名、英文姓名、職稱、email、電話、手機、社群連結、備註。
@@ -49,6 +53,9 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 - `tags`: 自訂標籤。
 - `classifications`: 公司分類、地區分類、產業分類。
 - `audit_logs`: 匯入、修改、合併、刪除紀錄。
+- `users` / `roles`: 登入帳號、狀態、角色與權限。
+- `auth_sessions`: 登入 session、過期時間與撤銷狀態。
+- `logo_records`: Logo 圖檔、啟用狀態與修改紀錄，提供系統管理員檢視。
 
 詳細 PostgreSQL schema、索引、關聯與 migration 規劃見 [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md)。
 
@@ -163,6 +170,24 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 - Ollama 的 vision 能力取決於安裝模型；不是所有 Ollama 模型都能讀圖。
 - 正式環境若仍使用本地 LLM，需準備 GPU/CPU 資源與模型管理策略。
 - API 若開放第三方服務使用，必須加上 authentication、rate limit、audit log。
+- 多人使用後必須先補齊資料擁有者欄位與查詢層權限過濾，不能只靠前端隱藏資料。
+
+## 下一階段：多人與權限 MVP
+
+下一階段目標是將 My Megi 從單人本地工具擴充為多人可使用的平台。詳細規劃見 [docs/AUTH_RBAC.md](docs/AUTH_RBAC.md)。
+
+角色範圍：
+
+- 系統管理員：只能看到用戶管理與 Logo 紀錄，不進入名片與聯絡人資料區。
+- 內容管理員：可以看到所有人的名片、聯絡人與審核資料。
+- 用戶：只能看到自己的名片與聯絡人。
+
+必備能力：
+
+- 登入介面與登出功能。
+- 使用者管理、停用帳號、重設初始密碼或邀請流程。
+- API 與 Web UI 皆套用相同權限規則。
+- 所有名片與聯絡人查詢依角色進行資料隔離。
 
 ## 推薦開發階段
 
@@ -174,7 +199,8 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 6. 聯絡人、公司、地區、產業分類。
 7. 查詢 UI。
 8. OpenAPI/Swagger 與 CLI。
-9. 權限、備份、正式環境部署。
+9. 多人登入、權限與資料隔離。
+10. 備份、正式環境部署。
 
 ## Git 工作規範
 

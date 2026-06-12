@@ -2,6 +2,8 @@
 
 My Megi MVP 使用 PostgreSQL/Postgres 作為主要資料庫。schema 目標是保存名片原始資料、OCR/LLM 中間結果、人工確認後的人脈資料，以及公司、地區、產業與自訂標籤分類。
 
+下一階段多人 MVP 會在此 schema 上增加使用者、角色、登入 session 與資料 owner 欄位，讓一般用戶只能存取自己的名片與聯絡人，內容管理員可查詢所有資料，系統管理員只存取用戶管理與 Logo 紀錄。
+
 如果「PostageDB」指的是其他資料庫產品，請先調整本文件中的 PostgreSQL-specific 設計，例如 `uuid`、`jsonb`、GIN index 與 extension。
 
 ## PostgreSQL Extensions
@@ -30,6 +32,110 @@ create extension if not exists citext;
 - `tags`: 使用者自訂標籤。
 - `contact_tags`: 聯絡人與 tag 的多對多關聯。
 - `audit_logs`: 匯入、修改、合併、刪除等稽核紀錄。
+- `users`: 登入帳號與狀態。
+- `roles`: 角色定義，例如 system_admin、content_admin、user。
+- `user_roles`: 使用者與角色關聯。
+- `auth_sessions`: 登入 session、過期與撤銷狀態。
+- `logo_records`: Logo 圖檔版本與啟用紀錄。
+
+## Auth and RBAC Tables
+
+### users
+
+```sql
+create table users (
+  id uuid primary key default gen_random_uuid(),
+  email citext not null unique,
+  display_name text not null,
+  password_hash text not null,
+  status text not null default 'active',
+  metadata jsonb not null default '{}'::jsonb,
+  last_login_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  deleted_at timestamptz,
+  constraint users_status_check check (status in ('active', 'disabled'))
+);
+
+create index users_status_idx on users (status);
+create index users_created_at_idx on users (created_at desc);
+```
+
+### roles
+
+```sql
+create table roles (
+  id uuid primary key default gen_random_uuid(),
+  code text not null unique,
+  name text not null,
+  description text,
+  created_at timestamptz not null default now()
+);
+```
+
+Seed values:
+
+```sql
+insert into roles (code, name, description) values
+  ('system_admin', 'System Administrator', 'Can manage users and view logo records only.'),
+  ('content_admin', 'Content Administrator', 'Can view and manage all business cards and contacts.'),
+  ('user', 'User', 'Can view and manage owned business cards and contacts only.')
+on conflict (code) do nothing;
+```
+
+### user_roles
+
+```sql
+create table user_roles (
+  user_id uuid not null references users(id) on delete cascade,
+  role_id uuid not null references roles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (user_id, role_id)
+);
+
+create index user_roles_role_id_idx on user_roles (role_id);
+```
+
+MVP 可限制每個使用者只有一個角色；若未來需要多角色，可保留此多對多結構。
+
+### auth_sessions
+
+```sql
+create table auth_sessions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references users(id) on delete cascade,
+  session_token_hash text not null unique,
+  user_agent text,
+  ip_address inet,
+  expires_at timestamptz not null,
+  revoked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index auth_sessions_user_id_idx on auth_sessions (user_id);
+create index auth_sessions_expires_at_idx on auth_sessions (expires_at);
+```
+
+### logo_records
+
+```sql
+create table logo_records (
+  id uuid primary key default gen_random_uuid(),
+  file_name text not null,
+  storage_path text not null,
+  checksum_sha256 text,
+  version_label text,
+  is_active boolean not null default false,
+  created_by_user_id uuid references users(id) on delete set null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index logo_records_created_at_idx on logo_records (created_at desc);
+create index logo_records_active_idx on logo_records (is_active) where is_active;
+```
+
+系統管理員只能讀取 `users`、`roles`、`user_roles`、`auth_sessions` 的管理資訊與 `logo_records`。後端 API 必須避免系統管理員角色讀取名片、聯絡人與 OCR/LLM 內容。
 
 ## Core Tables
 
@@ -60,6 +166,7 @@ create index companies_english_name_idx on companies (english_name);
 ```sql
 create table contacts (
   id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid references users(id) on delete restrict,
   company_id uuid references companies(id) on delete set null,
   display_name text not null,
   english_name text,
@@ -79,6 +186,7 @@ create table contacts (
 );
 
 create index contacts_display_name_idx on contacts (display_name);
+create index contacts_owner_user_id_idx on contacts (owner_user_id);
 create index contacts_english_name_idx on contacts (english_name);
 create index contacts_company_id_idx on contacts (company_id);
 create index contacts_created_at_idx on contacts (created_at desc);
@@ -92,6 +200,7 @@ create index contacts_metadata_gin_idx on contacts using gin (metadata);
 ```sql
 create table business_cards (
   id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid references users(id) on delete restrict,
   contact_id uuid references contacts(id) on delete set null,
   original_filename text not null,
   storage_path text not null,
@@ -129,6 +238,7 @@ alter table contacts
   foreign key (source_business_card_id) references business_cards(id) on delete set null;
 
 create index business_cards_contact_id_idx on business_cards (contact_id);
+create index business_cards_owner_user_id_idx on business_cards (owner_user_id);
 create index business_cards_status_idx on business_cards (status);
 create index business_cards_created_at_idx on business_cards (created_at desc);
 create index business_cards_extracted_data_gin_idx on business_cards using gin (extracted_data);
@@ -195,6 +305,7 @@ create index addresses_region_city_idx on addresses (country, region, city);
 ```sql
 create table relationship_notes (
   id uuid primary key default gen_random_uuid(),
+  owner_user_id uuid references users(id) on delete restrict,
   contact_id uuid not null references contacts(id) on delete cascade,
   business_card_id uuid references business_cards(id) on delete set null,
   met_at text,
@@ -209,6 +320,7 @@ create table relationship_notes (
 );
 
 create index relationship_notes_contact_id_idx on relationship_notes (contact_id);
+create index relationship_notes_owner_user_id_idx on relationship_notes (owner_user_id);
 create index relationship_notes_met_on_idx on relationship_notes (met_on desc);
 ```
 
@@ -349,14 +461,16 @@ MVP 重複資料判斷順序：
 建議 migration 順序：
 
 1. extensions。
-2. companies。
-3. contacts。
-4. business_cards plus `contacts.source_business_card_id` foreign key。
-5. contact_methods。
-6. addresses。
-7. relationship_notes。
-8. classification_types and classifications。
-9. contact_classifications。
-10. tags and contact_tags。
-11. audit_logs。
-12. indexes and seed data。
+2. users / roles / user_roles / auth_sessions。
+3. companies。
+4. contacts。
+5. business_cards plus `contacts.source_business_card_id` foreign key。
+6. contact_methods。
+7. addresses。
+8. relationship_notes。
+9. classification_types and classifications。
+10. contact_classifications。
+11. tags and contact_tags。
+12. logo_records。
+13. audit_logs。
+14. indexes and seed data。

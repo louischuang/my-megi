@@ -10,6 +10,25 @@
 - OpenAPI JSON 預設路徑建議為 `/openapi.json`。
 - 所有時間使用 ISO 8601。
 - 所有錯誤回應使用一致格式。
+- 下一階段所有非登入端點預設需要 authentication。
+- API 必須在後端套用角色與資料 owner 檢查，不能只依賴前端隱藏 UI。
+
+## Authentication and Roles
+
+下一階段建議先採用伺服器端 session cookie，或短效 bearer token。正式對第三方開放前再補 API token。
+
+角色：
+
+- `system_admin`: 系統管理員，只能存取用戶管理與 Logo 紀錄。
+- `content_admin`: 內容管理員，可存取所有用戶的名片與聯絡人。
+- `user`: 一般用戶，只能存取自己的名片與聯絡人。
+
+權限規則：
+
+- 未登入：只能呼叫登入、health、必要的靜態資產。
+- 系統管理員：可管理使用者與檢視 Logo 紀錄，不可讀取名片、聯絡人、OCR/LLM 結果。
+- 內容管理員：可讀取與管理所有 owner 的名片、聯絡人與審核流程。
+- 用戶：只可讀取與管理 `ownerUserId` 等於自己的資料。
 
 ## Error Response
 
@@ -25,11 +44,37 @@
 
 ## Resources
 
+### User
+
+```json
+{
+  "id": "user_123",
+  "email": "louis@example.com",
+  "displayName": "Louis Chuang",
+  "role": "user",
+  "status": "active",
+  "lastLoginAt": "2026-06-12T20:00:00+08:00",
+  "createdAt": "2026-06-12T19:30:00+08:00"
+}
+```
+
+Allowed role values:
+
+- `system_admin`
+- `content_admin`
+- `user`
+
+Allowed status values:
+
+- `active`
+- `disabled`
+
 ### Business Card
 
 ```json
 {
   "id": "card_123",
+  "ownerUserId": "user_123",
   "fileName": "alice.jpg",
   "backFileName": "alice-back.jpg",
   "mimeType": "image/jpeg",
@@ -58,6 +103,7 @@ Allowed status values:
 ```json
 {
   "id": "contact_123",
+  "ownerUserId": "user_123",
   "name": "陳艾莉",
   "englishName": "Alice Chen",
   "title": "Business Development Manager",
@@ -98,6 +144,93 @@ Allowed status values:
 
 ## Endpoints
 
+### Login
+
+`POST /api/auth/login`
+
+Request:
+
+```json
+{
+  "email": "louis@example.com",
+  "password": "secret"
+}
+```
+
+Response `200`:
+
+```json
+{
+  "user": {
+    "id": "user_123",
+    "email": "louis@example.com",
+    "displayName": "Louis Chuang",
+    "role": "user"
+  }
+}
+```
+
+### Logout
+
+`POST /api/auth/logout`
+
+Purpose: revoke current session/token.
+
+Response `200`:
+
+```json
+{
+  "status": "logged_out"
+}
+```
+
+### Current User
+
+`GET /api/me`
+
+Response `200`: User resource for the current authenticated user.
+
+### User Management
+
+System admin only.
+
+`GET /api/users`
+
+Response `200`:
+
+```json
+{
+  "items": [],
+  "limit": 20,
+  "offset": 0,
+  "total": 0
+}
+```
+
+`POST /api/users`
+
+Purpose: create a user and assign an initial role.
+
+`PATCH /api/users/{userId}`
+
+Purpose: update display name, role, or status.
+
+`POST /api/users/{userId}/disable`
+
+Purpose: disable a user account.
+
+`POST /api/users/{userId}/enable`
+
+Purpose: enable a disabled user account.
+
+### Logo Records
+
+System admin only.
+
+`GET /api/logo-records`
+
+Purpose: list logo changes and active logo metadata.
+
 ### Upload Card
 
 `POST /api/cards/upload`
@@ -116,6 +249,7 @@ Response `201`:
 ```json
 {
   "cardId": "card_123",
+  "ownerUserId": "user_123",
   "status": "pending"
 }
 ```
@@ -219,6 +353,7 @@ Query parameters:
 - `country`: country classification.
 - `city`: city classification.
 - `tag`: tag.
+- `ownerUserId`: only accepted for `content_admin`; ignored or rejected for ordinary users.
 - `limit`: default 20.
 - `offset`: default 0.
 
@@ -300,7 +435,15 @@ mymegi config set server http://localhost:3000
 mymegi config set token YOUR_API_TOKEN
 ```
 
-MVP 若尚未實作 authentication，可先省略 token。
+單人 MVP 若尚未實作 authentication，可先省略 token。多人 MVP 需要 CLI 支援登入或 token 設定，並在每次 request 帶上 credentials。
+
+### Login / Logout
+
+```bash
+mymegi login --email louis@example.com
+mymegi logout
+mymegi me
+```
 
 ### Upload
 
