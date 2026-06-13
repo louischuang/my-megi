@@ -1,6 +1,6 @@
 {
   "name": "my-megi",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "private": true,
   "description": "Local-first business card and relationship manager."
 }

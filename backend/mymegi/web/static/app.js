@@ -7,6 +7,8 @@ const state = {
   selectedCardId: null,
   selectedContactId: null,
   cardReviewTab: "pending",
+  users: [],
+  userSearchQuery: "",
   toastTimer: null,
 };
 
@@ -110,7 +112,6 @@ function showAuthenticated(user) {
   state.currentUser = user;
   document.body.classList.add("is-authenticated");
   document.querySelector("#login-screen").hidden = true;
-  document.querySelector("#current-user-label").textContent = `${user.displayName} · ${user.role}`;
   document.querySelectorAll(".admin-only").forEach((element) => {
     element.hidden = !isSystemAdmin();
   });
@@ -651,7 +652,6 @@ function resetUserForm() {
   form.elements.password.required = true;
   document.querySelector("#user-form-title").textContent = "建立用戶";
   document.querySelector("#user-form-submit").textContent = "建立用戶";
-  document.querySelector("#user-form-reset").hidden = true;
 }
 
 function fillUserForm(user) {
@@ -664,18 +664,28 @@ function fillUserForm(user) {
   form.elements.role.value = user.role;
   document.querySelector("#user-form-title").textContent = "編輯用戶";
   document.querySelector("#user-form-submit").textContent = "更新用戶";
-  document.querySelector("#user-form-reset").hidden = false;
-  form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  openModal("user");
 }
 
-async function loadUsers() {
-  const data = await fetchJson("/api/users");
+function openCreateUserForm() {
+  resetUserForm();
+  openModal("user");
+  document.querySelector("#user-create-form").elements.email.focus();
+}
+
+function renderUsers() {
   const body = document.querySelector("#users-body");
-  if (!data.items.length) {
-    body.innerHTML = `<tr><td colspan="6"><div class="empty">尚無用戶</div></td></tr>`;
+  const query = state.userSearchQuery.trim().toLowerCase();
+  const users = query
+    ? state.users.filter((user) =>
+        [user.email, user.displayName].some((value) => String(value || "").toLowerCase().includes(query)),
+      )
+    : state.users;
+  if (!users.length) {
+    body.innerHTML = `<tr><td colspan="6"><div class="empty">${state.users.length ? "找不到符合的用戶" : "尚無用戶"}</div></td></tr>`;
     return;
   }
-  body.innerHTML = data.items
+  body.innerHTML = users
     .map(
       (user) => `
       <tr>
@@ -705,6 +715,12 @@ async function loadUsers() {
     `,
     )
     .join("");
+}
+
+async function loadUsers() {
+  const data = await fetchJson("/api/users");
+  state.users = data.items;
+  renderUsers();
 }
 
 async function refreshAdmin() {
@@ -848,6 +864,7 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  closeModal("user");
   closeModal("review");
   closeModal("contact-detail");
 });
@@ -927,6 +944,13 @@ document.querySelector("#access-tokens-body").addEventListener("click", async (e
 
 document.querySelector("#refresh-users").addEventListener("click", refreshAdmin);
 
+document.querySelector("#open-user-form").addEventListener("click", openCreateUserForm);
+
+document.querySelector("#user-search").addEventListener("input", (event) => {
+  state.userSearchQuery = new FormData(event.currentTarget).get("q") || "";
+  renderUsers();
+});
+
 document.querySelector("#user-create-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const form = event.currentTarget;
@@ -950,6 +974,7 @@ document.querySelector("#user-create-form").addEventListener("submit", async (ev
     body: JSON.stringify(payload),
   });
   resetUserForm();
+  closeModal("user");
   await refreshAdmin();
 });
 
@@ -976,8 +1001,6 @@ document.querySelector("#users-body").addEventListener("click", async (event) =>
     await refreshAdmin();
   }
 });
-
-document.querySelector("#user-form-reset").addEventListener("click", resetUserForm);
 
 document.querySelector("#upload-toast-close").addEventListener("click", () => {
   document.querySelector("#upload-toast").hidden = true;

@@ -296,6 +296,12 @@ main {
   margin-bottom: 14px;
 }
 
+.title-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .panel-title > span,
 .panel-title > div > span {
   min-width: 64px;
@@ -312,6 +318,11 @@ main {
 form {
   display: grid;
   gap: 14px;
+}
+
+.admin-user-search {
+  width: min(420px, 100%);
+  margin-bottom: 14px;
 }
 
 .form-heading {
@@ -746,6 +757,10 @@ button.compact {
 
 #contacts.modal-panel {
   width: min(1040px, 100%);
+}
+
+.user-modal-panel {
+  width: min(640px, 100%);
 }
 
 .contact-detail-panel {
