@@ -250,8 +250,55 @@ def is_auto_confirmable(draft: dict[str, Any]) -> bool:
     return draft_confidence(draft) >= 0.9 and bool(clean_text(draft.get("name")))
 
 
+def first_clean_text(value: Any) -> str | None:
+    if isinstance(value, list):
+        for item in value:
+            text = clean_text(item)
+            if text:
+                return text
+        return None
+    return clean_text(value)
+
+
+def clean_payload_list(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        value = [value]
+    return clean_list([text for item in value if (text := clean_text(item))])
+
+
 def auto_confirm_payload(draft: dict[str, Any]) -> dict[str, Any]:
     payload = dict(draft)
+    for key in ("name", "englishName", "title", "website", "metAt", "metOn", "note", "extraNotes"):
+        if key in payload:
+            payload[key] = first_clean_text(payload.get(key))
+    for key in ("emails", "phones", "mobiles", "fax"):
+        payload[key] = clean_payload_list(payload.get(key))
+
+    company = payload.get("company") if isinstance(payload.get("company"), dict) else {}
+    payload["company"] = {
+        "name": first_clean_text(company.get("name")),
+        "englishName": first_clean_text(company.get("englishName")),
+        "taxId": first_clean_text(company.get("taxId")),
+        "industry": first_clean_text(company.get("industry")),
+    }
+
+    address = payload.get("address") if isinstance(payload.get("address"), dict) else {}
+    payload["address"] = {
+        "raw": first_clean_text(address.get("raw")),
+        "englishRaw": first_clean_text(address.get("englishRaw")),
+        "country": first_clean_text(address.get("country")),
+        "city": first_clean_text(address.get("city")),
+        "district": first_clean_text(address.get("district")),
+    }
+
+    classifications = payload.get("classifications") if isinstance(payload.get("classifications"), dict) else {}
+    payload["classifications"] = {
+        "company": clean_payload_list(classifications.get("company")),
+        "region": clean_payload_list(classifications.get("region")),
+        "industry": clean_payload_list(classifications.get("industry")),
+    }
     if clean_text(payload.get("notes")) and not clean_text(payload.get("note")):
         payload["note"] = payload["notes"]
     return payload

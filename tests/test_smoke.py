@@ -14,3 +14,16 @@ def test_auto_confirm_includes_ninety_percent_confidence() -> None:
 def test_auto_confirm_payload_maps_draft_notes() -> None:
     payload = auto_confirm_payload({"name": "Louis Chuang", "notes": "Met at expo"})
     assert payload["note"] == "Met at expo"
+
+
+def test_auto_confirm_payload_coerces_llm_shape_drift() -> None:
+    payload = auto_confirm_payload(
+        {
+            "name": "Louis Chuang",
+            "company": {"industry": ["IT/Technology"]},
+            "fax": [None, "02-1234-5678"],
+        }
+    )
+
+    assert payload["company"]["industry"] == "IT/Technology"
+    assert payload["fax"] == ["02-1234-5678"]
