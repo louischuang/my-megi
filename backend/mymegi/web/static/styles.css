@@ -205,9 +205,9 @@ button {
 }
 
 .user-strip {
-  background: #ffd3e5;
-  border-bottom: 1px solid rgb(255 79 163 / 38%);
-  color: #4c152b;
+  background: #e7ebf1;
+  border-bottom: 1px solid rgb(170 180 194 / 45%);
+  color: #263142;
 }
 
 .user-strip-inner {
@@ -216,29 +216,30 @@ button {
   margin: 0 auto;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
   font-size: 13px;
 }
 
 .user-strip-inner span {
-  color: rgb(76 21 43 / 72%);
+  color: rgb(38 49 66 / 72%);
 }
 
 .user-strip-inner strong {
   min-width: 0;
   max-width: min(420px, 58vw);
   overflow: hidden;
-  color: #2b0917;
+  color: #101722;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .user-strip .bare-icon {
-  color: #9d1d50;
+  color: #5f6876;
 }
 
 .user-strip .bare-icon:hover {
-  color: #ff1378;
+  color: var(--accent);
 }
 
 button[type="submit"] {
