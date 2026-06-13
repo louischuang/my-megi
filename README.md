@@ -121,6 +121,7 @@ docker compose up --build
 啟動後可開啟：
 
 - Web UI: `http://localhost:8000`
+- 功能輔助說明: `http://localhost:8000/help`
 - API health check: `http://localhost:8000/health`
 - Swagger UI: `http://localhost:8000/docs`
 - OpenAPI JSON: `http://localhost:8000/openapi.json`
@@ -143,6 +144,7 @@ mymegi health
 - 最近匯入名片列表。
 - 聯絡人搜尋列表，每頁 20 筆。
 - 用戶管理列表，每頁 20 筆。
+- 功能輔助說明頁，提供主要功能截圖與入口指引。
 
 ## API 與 CLI
 

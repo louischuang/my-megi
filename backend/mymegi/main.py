@@ -702,6 +702,11 @@ async def root() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
 
 
+@app.get("/help")
+async def help_page() -> FileResponse:
+    return FileResponse(WEB_DIR / "help.html")
+
+
 @app.get("/health")
 async def health() -> dict[str, Any]:
     settings = get_settings()

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>My Megi 功能說明</title>
+    <link rel="stylesheet" href="/static/help.css?v=20260613-help-page" />
+  </head>
+  <body>
+    <header class="help-topbar">
+      <a class="brand-link" href="/" aria-label="回到 My Megi">
+        <img src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
+      </a>
+      <a class="back-link" href="/">回到系統</a>
+    </header>
+
+    <main class="help-shell">
+      <section class="help-hero">
+        <p>My Megi Guide</p>
+        <h1>功能輔助說明</h1>
+        <span>依照主要工作流程整理：登入、上傳、辨識審核、聯絡人、API Token、用戶管理與 API 文件。</span>
+      </section>
+
+      <section class="feature-grid" aria-label="功能截圖">
+        <article class="feature-card">
+          <img src="/static/assets/help/01-login.png?v=20260613-help-page" alt="登入與版本資訊畫面截圖" />
+          <div>
+            <h2>登入與版本資訊</h2>
+            <p>進入系統前先登入。登入卡片下方會顯示目前服務版本，正式環境請使用管理員建立的帳號。</p>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <img src="/static/assets/help/02-upload.png?v=20260613-help-page" alt="名片上傳畫面截圖" />
+          <div>
+            <h2>名片上傳</h2>
+            <p>正面至少一張，背面選填。支援拖拉或點選上傳，送出後會自動執行 OCR 與 LLM 結構化辨識。</p>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <img src="/static/assets/help/03-review.png?v=20260613-help-page" alt="最近匯入與審核流程截圖" />
+          <div>
+            <h2>最近匯入與審核</h2>
+            <p>最近匯入分成未審核與已審核。辨識完成後可進入審核表單，低信心度資料由人工確認。</p>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <img src="/static/assets/help/04-contacts.png?v=20260613-help-page" alt="聯絡人列表與分頁截圖" />
+          <div>
+            <h2>聯絡人查詢</h2>
+            <p>可用姓名、公司、Email、電話與分類搜尋。列表每頁 20 筆，右側提供檢視、編輯與刪除操作。</p>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <img src="/static/assets/help/05-api-token.png?v=20260613-help-page" alt="API Access Token 管理截圖" />
+          <div>
+            <h2>API Access Token</h2>
+            <p>用戶與內容管理員可建立第三方整合 Token。每個帳號最多一組 Active token，重新產生會讓舊 token 過期。</p>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <img src="/static/assets/help/06-users.png?v=20260613-help-page" alt="用戶管理與權限截圖" />
+          <div>
+            <h2>用戶管理</h2>
+            <p>系統管理員可搜尋、新增、編輯、啟用與停用用戶。用戶列表每頁 20 筆，權限由角色控制。</p>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <img src="/static/assets/help/07-profile.png?v=20260613-help-page" alt="個人資訊修改截圖" />
+          <div>
+            <h2>我的資訊</h2>
+            <p>登入後在 Top Banner 下方可看到目前用戶。右側齒輪可修改顯示名稱與密碼，登入帳號不可修改。</p>
+          </div>
+        </article>
+
+        <article class="feature-card">
+          <img src="/static/assets/help/08-api-docs.png?v=20260613-help-page" alt="Swagger API 文件截圖" />
+          <div>
+            <h2>Swagger API 文件</h2>
+            <p>開發者可從 Swagger 查詢 API schema、request/response 格式與測試端點，CLI 也使用同一組 HTTP API。</p>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="help-footer">
+      <span>開發者：Louis Chuang</span>
+      <span>Copyright: 2026</span>
+      <span>版本號：v0.1.20</span>
+    </footer>
+  </body>
+</html>
