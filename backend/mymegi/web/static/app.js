@@ -4,13 +4,19 @@ const state = {
   companyClassification: "",
   regionClassification: "",
   industryClassification: "",
+  contactsPage: 1,
+  contactsTotal: 0,
   selectedCardId: null,
   selectedContactId: null,
   cardReviewTab: "pending",
   users: [],
   userSearchQuery: "",
+  usersPage: 1,
+  usersTotal: 0,
   toastTimer: null,
 };
+
+const PAGE_SIZE = 20;
 
 const formatDate = (value) => {
   if (!value) return "";
@@ -79,6 +85,27 @@ const recognitionText = (value) =>
     processing: "辨識中",
     pending: "待辨識",
   })[value] || `辨識 ${statusText(value)}`;
+
+function renderPagination(target, total, page, scope) {
+  const container = document.querySelector(target);
+  if (!container) return;
+  const totalPages = Math.max(1, Math.ceil(Number(total || 0) / PAGE_SIZE));
+  const normalizedPage = Math.min(Math.max(1, page), totalPages);
+  const start = total ? (normalizedPage - 1) * PAGE_SIZE + 1 : 0;
+  const end = Math.min(normalizedPage * PAGE_SIZE, Number(total || 0));
+  container.innerHTML = `
+    <span>${start}-${end} / 共 ${Number(total || 0)} 筆</span>
+    <div class="pagination-actions">
+      <button class="bare-icon" type="button" data-page-scope="${scope}" data-page-action="prev" ${normalizedPage <= 1 ? "disabled" : ""} title="上一頁" aria-label="上一頁">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+      </button>
+      <strong>第 ${normalizedPage} / ${totalPages} 頁</strong>
+      <button class="bare-icon" type="button" data-page-scope="${scope}" data-page-action="next" ${normalizedPage >= totalPages ? "disabled" : ""} title="下一頁" aria-label="下一頁">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+      </button>
+    </div>
+  `;
+}
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
@@ -492,7 +519,10 @@ function reviewPayload(form) {
 
 async function loadContacts() {
   if (isSystemAdmin()) return;
-  const params = new URLSearchParams({ limit: "20" });
+  const params = new URLSearchParams({
+    limit: String(PAGE_SIZE),
+    offset: String((state.contactsPage - 1) * PAGE_SIZE),
+  });
   if (state.contactsQuery) params.set("q", state.contactsQuery);
   if (state.companyClassification) {
     params.set("companyClassification", state.companyClassification);
@@ -504,6 +534,13 @@ async function loadContacts() {
     params.set("industryClassification", state.industryClassification);
   }
   const data = await fetchJson(`/api/contacts?${params.toString()}`);
+  state.contactsTotal = Number(data.total || 0);
+  const maxPage = Math.max(1, Math.ceil(state.contactsTotal / PAGE_SIZE));
+  if (state.contactsPage > maxPage) {
+    state.contactsPage = maxPage;
+    return loadContacts();
+  }
+  renderPagination("#contacts-pagination", state.contactsTotal, state.contactsPage, "contacts");
   const body = document.querySelector("#contacts-body");
   if (!data.items.length) {
     body.innerHTML = `<tr><td colspan="6"><div class="empty">尚無聯絡人資料</div></td></tr>`;
@@ -731,14 +768,10 @@ function openProfileForm() {
 
 function renderUsers() {
   const body = document.querySelector("#users-body");
-  const query = state.userSearchQuery.trim().toLowerCase();
-  const users = query
-    ? state.users.filter((user) =>
-        [user.email, user.displayName].some((value) => String(value || "").toLowerCase().includes(query)),
-      )
-    : state.users;
+  const users = state.users;
+  renderPagination("#users-pagination", state.usersTotal, state.usersPage, "users");
   if (!users.length) {
-    body.innerHTML = `<tr><td colspan="6"><div class="empty">${state.users.length ? "找不到符合的用戶" : "尚無用戶"}</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="6"><div class="empty">${state.userSearchQuery ? "找不到符合的用戶" : "尚無用戶"}</div></td></tr>`;
     return;
   }
   body.innerHTML = users
@@ -774,8 +807,21 @@ function renderUsers() {
 }
 
 async function loadUsers() {
-  const data = await fetchJson("/api/users");
+  const params = new URLSearchParams({
+    limit: String(PAGE_SIZE),
+    offset: String((state.usersPage - 1) * PAGE_SIZE),
+  });
+  if (state.userSearchQuery) {
+    params.set("q", state.userSearchQuery);
+  }
+  const data = await fetchJson(`/api/users?${params.toString()}`);
   state.users = data.items;
+  state.usersTotal = Number(data.total || 0);
+  const maxPage = Math.max(1, Math.ceil(state.usersTotal / PAGE_SIZE));
+  if (state.usersPage > maxPage) {
+    state.usersPage = maxPage;
+    return loadUsers();
+  }
   renderUsers();
 }
 
@@ -980,6 +1026,7 @@ document.querySelector("#contact-search").addEventListener("submit", async (even
   state.companyClassification = form.get("companyClassification").trim();
   state.regionClassification = form.get("regionClassification").trim();
   state.industryClassification = form.get("industryClassification").trim();
+  state.contactsPage = 1;
   await loadContacts();
 });
 
@@ -1044,7 +1091,22 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
 
 document.querySelector("#user-search").addEventListener("input", (event) => {
   state.userSearchQuery = new FormData(event.currentTarget).get("q") || "";
-  renderUsers();
+  state.usersPage = 1;
+  loadUsers().catch((error) => console.error(error));
+});
+
+document.addEventListener("click", async (event) => {
+  const button = event.target.closest("[data-page-scope]");
+  if (!button || button.disabled) return;
+  const direction = button.dataset.pageAction === "next" ? 1 : -1;
+  if (button.dataset.pageScope === "contacts") {
+    state.contactsPage = Math.max(1, state.contactsPage + direction);
+    await loadContacts();
+  }
+  if (button.dataset.pageScope === "users") {
+    state.usersPage = Math.max(1, state.usersPage + direction);
+    await loadUsers();
+  }
 });
 
 document.querySelector("#user-create-form").addEventListener("submit", async (event) => {

@@ -141,7 +141,8 @@ mymegi health
 - Dashboard 統計聯絡人、公司、名片與待處理名片數。
 - 名片上傳表單，支援認識場合、日期與備註。
 - 最近匯入名片列表。
-- 聯絡人搜尋列表。
+- 聯絡人搜尋列表，每頁 20 筆。
+- 用戶管理列表，每頁 20 筆。
 
 ## API 與 CLI
 
@@ -154,13 +155,13 @@ API 會以 OpenAPI/Swagger 文件公開，初期端點包含：
 - `GET /api/access-tokens`: 取得目前登入使用者的 API Access Token 列表。
 - `POST /api/access-tokens`: 產生新的 API Access Token，並讓原 active token 過期。
 - `POST /api/access-tokens/{id}/revoke`: 撤銷目前使用者的 API Access Token。
-- `GET /api/users`: 系統管理員使用者列表。
+- `GET /api/users`: 系統管理員使用者列表，支援 `q`、`limit`、`offset` 分頁查詢。
 - `POST /api/cards/upload`: 上傳名片。
 - `GET /api/cards/{id}`: 取得名片處理結果。
 - `POST /api/cards/{id}/extract`: 重新執行 OCR。
 - `POST /api/cards/{id}/structure`: 使用 OCR 文字與可用時的圖片 vision 重新產生待審核草稿。
 - `POST /api/contacts`: 建立聯絡人。
-- `GET /api/contacts`: 搜尋聯絡人。
+- `GET /api/contacts`: 搜尋聯絡人，支援 `limit`、`offset` 分頁查詢。
 - `GET /api/contacts/{id}`: 取得聯絡人詳情。
 - `PATCH /api/contacts/{id}`: 更新聯絡人。
 - `POST /api/contacts/{id}/notes`: 新增認識紀錄。

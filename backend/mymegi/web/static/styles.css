@@ -946,6 +946,40 @@ button.compact {
   overflow-x: auto;
 }
 
+.pagination {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  padding-top: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pagination-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pagination-actions strong {
+  min-width: 96px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: center;
+}
+
+.bare-icon:disabled {
+  cursor: not-allowed;
+  opacity: 0.36;
+}
+
+.bare-icon:disabled:hover {
+  color: var(--muted);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

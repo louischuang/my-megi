@@ -992,21 +992,59 @@ async def revoke_api_access_token(
 
 
 @app.get("/api/users")
-async def list_users(user: dict[str, Any] = Depends(require_roles("system_admin"))) -> dict[str, Any]:
+async def list_users(
+    q: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+    user: dict[str, Any] = Depends(require_roles("system_admin")),
+) -> dict[str, Any]:
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+    row_conditions = ["u.deleted_at is null"]
+    row_params: list[Any] = [limit, offset]
+    if q and q.strip():
+        row_params.append(f"%{q.strip()}%")
+        search_param = len(row_params)
+        row_conditions.append(
+            f"(u.email ilike ${search_param} or u.display_name ilike ${search_param})"
+        )
+    where_clause = "where " + " and ".join(row_conditions)
+
+    count_conditions = ["u.deleted_at is null"]
+    count_params: list[Any] = []
+    if q and q.strip():
+        count_params.append(f"%{q.strip()}%")
+        count_conditions.append("(u.email ilike $1 or u.display_name ilike $1)")
+    count_where = "where " + " and ".join(count_conditions)
     async with database.acquire() as connection:
         rows = await connection.fetch(
-            """
+            f"""
             select
               u.id, u.email, u.display_name, u.status, u.last_login_at, u.created_at,
               coalesce(r.code, 'user') as role
             from users u
             left join user_roles ur on ur.user_id = u.id
             left join roles r on r.id = ur.role_id
-            where u.deleted_at is null
+            {where_clause}
             order by u.created_at desc
-            """
+            limit $1 offset $2
+            """,
+            *row_params,
         )
-    return {"items": [serialize_user(row) for row in rows]}
+        total = await connection.fetchval(
+            f"""
+            select count(*)
+            from users u
+            {count_where}
+            """,
+            *count_params,
+        )
+    return {
+        "items": [serialize_user(row) for row in rows],
+        "limit": limit,
+        "offset": offset,
+        "total": total,
+    }
 
 
 async def set_user_role(connection: Any, user_id: UUID, role_code: str) -> None:

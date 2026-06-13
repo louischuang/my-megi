@@ -216,6 +216,12 @@ System admin only.
 
 `GET /api/users`
 
+Query parameters:
+
+- `q`: keyword across email and display name.
+- `limit`: default 20.
+- `offset`: default 0.
+
 Response `200`:
 
 ```json
