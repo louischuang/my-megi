@@ -618,4 +618,5 @@ mymegi notes add contact_123 \
 - Audit logs。
 - Pagination consistency。
 - Backup and restore guide: [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
+- Deployment guide: [DEPLOYMENT.md](DEPLOYMENT.md).
 - Data export endpoint。

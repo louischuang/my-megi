@@ -195,7 +195,7 @@
 - [x] rate limit：登入、API Access Token 產生與撤銷端點已有單機 in-memory sliding window 限流。
 - [x] audit log 完整覆蓋登入、登出、使用者管理、API token 與資料操作。
 - [x] backup/restore 文件。
-- [ ] deployment 文件。
+- [x] deployment 文件。
 
 驗證方式：
 
