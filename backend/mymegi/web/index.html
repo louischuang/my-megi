@@ -23,7 +23,7 @@
         </label>
         <button type="submit">登入</button>
         <p id="login-error" class="error-text"></p>
-        <p class="login-version">Ver. <span data-app-version>v0.1.10</span></p>
+        <p class="login-version">Ver. <span data-app-version>v0.1.11</span></p>
       </form>
     </section>
 
@@ -31,7 +31,7 @@
       <div class="brand">
         <div class="brand-lockup" aria-label="My Megi">
           <img class="brand-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
-          <span class="app-version" data-app-version>v0.1.10</span>
+          <span class="app-version" data-app-version>v0.1.11</span>
         </div>
         <p>名片與人脈資料庫</p>
       </div>
@@ -175,11 +175,13 @@
           </div>
           <div class="token-grid">
             <form id="access-token-form">
+              <div class="token-create-row">
               <label>
                 <span>Token 名稱</span>
                 <input name="name" type="text" value="Default API Token" maxlength="120" />
               </label>
               <button type="submit">產生新的 Token</button>
+              </div>
               <p class="helper-text">重新產生後，原本 Active token 會自動改成過期。</p>
             </form>
           </div>
@@ -250,7 +252,7 @@
     <footer class="site-footer">
       <span>開發者：Louis Chuang</span>
       <span>Copyright: 2026</span>
-      <span>版本號：<span data-app-version>v0.1.10</span></span>
+      <span>版本號：<span data-app-version>v0.1.11</span></span>
     </footer>
 
     <div class="modal" id="access-token-modal" hidden>
