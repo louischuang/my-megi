@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     bootstrap_admin_password: str = Field(default="mymegi-admin", alias="BOOTSTRAP_ADMIN_PASSWORD")
     bootstrap_admin_name: str = Field(default="My Megi Admin", alias="BOOTSTRAP_ADMIN_NAME")
     session_days: int = Field(default=7, alias="SESSION_DAYS")
+    login_rate_limit: int = Field(default=10, alias="LOGIN_RATE_LIMIT")
+    login_rate_window_seconds: int = Field(default=60, alias="LOGIN_RATE_WINDOW_SECONDS")
+    api_token_create_rate_limit: int = Field(default=6, alias="API_TOKEN_CREATE_RATE_LIMIT")
+    api_token_create_rate_window_seconds: int = Field(default=60, alias="API_TOKEN_CREATE_RATE_WINDOW_SECONDS")
+    api_token_revoke_rate_limit: int = Field(default=20, alias="API_TOKEN_REVOKE_RATE_LIMIT")
+    api_token_revoke_rate_window_seconds: int = Field(default=60, alias="API_TOKEN_REVOKE_RATE_WINDOW_SECONDS")
 
 
 @lru_cache

@@ -192,7 +192,7 @@
 ## Phase 11: 正式環境準備
 
 - [x] API token MVP：用戶與內容管理員可自助產生 API Access Token，且每個帳號最多一組 active token。
-- [ ] rate limit。
+- [x] rate limit：登入、API Access Token 產生與撤銷端點已有單機 in-memory sliding window 限流。
 - [ ] audit log 完整覆蓋登入、登出、使用者管理、API token 與資料操作。
 - [ ] backup/restore 文件。
 - [ ] deployment 文件。
@@ -200,4 +200,5 @@
 驗證方式：
 
 - 使用 token 才能呼叫第三方 API。
+- 登入與 API Access Token 敏感端點超過限制時回傳 `429` 與 `Retry-After`。
 - 可備份並還原資料庫與上傳檔。

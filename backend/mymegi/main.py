@@ -4,6 +4,8 @@ import base64
 import hmac
 import os
 import secrets
+import time
+from collections import defaultdict, deque
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from hashlib import pbkdf2_hmac, sha256
@@ -33,6 +35,7 @@ PACKAGE_JSON = ROOT_DIR / "package.json"
 SESSION_COOKIE_NAME = "mymegi_session"
 PASSWORD_ITERATIONS = 210_000
 API_TOKEN_PREFIX = "mymegi"
+RATE_LIMIT_BUCKETS: dict[str, deque[float]] = defaultdict(deque)
 
 register_heif_opener()
 
@@ -57,6 +60,69 @@ def app_version() -> str:
         return "0.0.0"
     version = package.get("version")
     return version if isinstance(version, str) and version.strip() else "0.0.0"
+
+
+def client_identifier(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def rate_limit_key(request: Request, scope: str) -> str:
+    return f"{scope}:{client_identifier(request)}"
+
+
+def enforce_rate_limit(request: Request, scope: str, limit: int, window_seconds: int) -> None:
+    if limit <= 0 or window_seconds <= 0:
+        return
+    now = time.monotonic()
+    window_start = now - window_seconds
+    key = rate_limit_key(request, scope)
+    bucket = RATE_LIMIT_BUCKETS[key]
+    while bucket and bucket[0] <= window_start:
+        bucket.popleft()
+    if len(bucket) >= limit:
+        retry_after = max(1, int(bucket[0] + window_seconds - now))
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "code": "rate_limited",
+                "message": "Too many requests. Please retry later.",
+            },
+            headers={"Retry-After": str(retry_after)},
+        )
+    bucket.append(now)
+
+
+async def login_rate_limit(request: Request) -> None:
+    settings = get_settings()
+    enforce_rate_limit(
+        request,
+        "auth_login",
+        settings.login_rate_limit,
+        settings.login_rate_window_seconds,
+    )
+
+
+async def api_token_create_rate_limit(request: Request) -> None:
+    settings = get_settings()
+    enforce_rate_limit(
+        request,
+        "api_token_create",
+        settings.api_token_create_rate_limit,
+        settings.api_token_create_rate_window_seconds,
+    )
+
+
+async def api_token_revoke_rate_limit(request: Request) -> None:
+    settings = get_settings()
+    enforce_rate_limit(
+        request,
+        "api_token_revoke",
+        settings.api_token_revoke_rate_limit,
+        settings.api_token_revoke_rate_window_seconds,
+    )
 
 
 def normalize_lookup(value: str) -> str:
@@ -625,6 +691,7 @@ async def version() -> dict[str, str]:
 async def login(
     request: Request,
     response: FastApiResponse,
+    _rate_limit: None = Depends(login_rate_limit),
     payload: LoginRequest = Body(...),
 ) -> dict[str, Any]:
     async with database.acquire() as connection:
@@ -739,6 +806,7 @@ async def list_api_access_tokens(
 @app.post("/api/access-tokens", status_code=201)
 async def create_api_access_token(
     payload: ApiAccessTokenCreateRequest | None = Body(default=None),
+    _rate_limit: None = Depends(api_token_create_rate_limit),
     user: dict[str, Any] = Depends(require_roles("content_admin", "user")),
 ) -> dict[str, Any]:
     token = generate_api_access_token()
@@ -785,6 +853,7 @@ async def create_api_access_token(
 @app.post("/api/access-tokens/{token_id}/revoke")
 async def revoke_api_access_token(
     token_id: UUID,
+    _rate_limit: None = Depends(api_token_revoke_rate_limit),
     user: dict[str, Any] = Depends(require_roles("content_admin", "user")),
 ) -> dict[str, Any]:
     async with database.acquire() as connection:

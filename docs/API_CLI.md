@@ -173,6 +173,8 @@ Response `200`:
 
 Web UI 會使用 HTTP-only session cookie。CLI 或自動化程式可將 `sessionToken` 設為 `MYMEGI_API_TOKEN`，或在 request header 帶上 `Authorization: Bearer <sessionToken>`。
 
+Rate limit: default 10 login attempts per 60 seconds per client IP. Exceeded limits return `429` with `detail.code = "rate_limited"` and a `Retry-After` header.
+
 ### Logout
 
 `POST /api/auth/logout`
@@ -225,6 +227,12 @@ Purpose: disable a user account.
 ### API Access Tokens
 
 Content admin and user only. System admin cannot access content API token management.
+
+Rate limit:
+
+- `POST /api/access-tokens`: default 6 requests per 60 seconds per client IP.
+- `POST /api/access-tokens/{tokenId}/revoke`: default 20 requests per 60 seconds per client IP.
+- Exceeded limits return `429` with a machine-readable `detail.code` of `rate_limited` and a `Retry-After` header.
 
 `GET /api/access-tokens`
 

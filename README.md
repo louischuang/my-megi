@@ -185,7 +185,8 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 - 地區分類若要準確，應導入地址標準化或行政區資料表。
 - Ollama 的 vision 能力取決於安裝模型；不是所有 Ollama 模型都能讀圖。
 - 正式環境若仍使用本地 LLM，需準備 GPU/CPU 資源與模型管理策略。
-- API Access Token MVP 已支援用戶與內容管理員自助產生；後續正式環境仍需補 rate limit 與更完整 audit log。
+- API Access Token MVP 已支援用戶與內容管理員自助產生；登入與 API token 敏感端點已有單機 rate limit。多副本正式環境建議改用 Redis 或 API gateway 做集中限流。
+- 後續正式環境仍需補更完整 audit log。
 - 多人使用已完成基本資料擁有者欄位與查詢層權限過濾；後續仍需補備份/還原與部署文件。
 
 ## 已完成：多人與權限 MVP
@@ -216,7 +217,7 @@ My Megi 已從單人本地工具擴充為多人可使用的平台。詳細設計
 7. 查詢 UI。
 8. OpenAPI/Swagger 與 CLI。
 9. 多人登入、權限與資料隔離。
-10. 備份、正式環境部署、rate limit 與完整 audit log。
+10. 備份、正式環境部署與完整 audit log。
 
 ## Git 工作規範
 
