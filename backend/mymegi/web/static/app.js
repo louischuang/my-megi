@@ -106,6 +106,14 @@ function canAccessAdminTab() {
   return isSystemAdmin();
 }
 
+function preferredMainTab() {
+  const fromHash = window.location.hash.replace(/^#/, "");
+  if (["upload", "contacts", "api", "admin"].includes(fromHash)) {
+    return fromHash;
+  }
+  return isSystemAdmin() ? "admin" : "upload";
+}
+
 function syncAdminNavigation() {
   const adminButton = document.querySelector('[data-main-tab="admin"]');
   if (adminButton) {
@@ -127,7 +135,7 @@ function showAuthenticated(user) {
   document.body.classList.add("is-authenticated");
   document.querySelector("#login-screen").hidden = true;
   syncAdminNavigation();
-  showMainTab(isSystemAdmin() ? "admin" : "upload");
+  showMainTab(preferredMainTab());
 }
 
 function openModal(name) {
@@ -155,6 +163,9 @@ function showMainTab(name) {
   if (name === "admin" && !canAccessAdminTab()) {
     name = "upload";
   }
+  if (isSystemAdmin() && name !== "admin") {
+    name = "admin";
+  }
   document.querySelectorAll("[data-main-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.mainPanel !== name;
   });
@@ -169,6 +180,9 @@ function showMainTab(name) {
   }
   if (name === "admin") {
     refreshAdmin().catch((error) => console.error(error));
+  }
+  if (window.location.hash !== `#${name}`) {
+    window.history.replaceState(null, "", `#${name}`);
   }
 }
 
@@ -1037,9 +1051,10 @@ document.querySelector("#upload-toast-close").addEventListener("click", () => {
   window.clearTimeout(state.toastTimer);
 });
 
-if (window.location.hash === "#contacts") {
-  openContactsPanel().catch((error) => console.error(error));
-}
+window.addEventListener("hashchange", () => {
+  if (!state.currentUser) return;
+  showMainTab(preferredMainTab());
+});
 
 loadVersion().catch((error) => {
   console.error(error);
