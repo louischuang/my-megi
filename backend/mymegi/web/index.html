@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>My Megi</title>
-    <link rel="stylesheet" href="/static/styles.css?v=20260613-deployment-docs" />
+    <link rel="stylesheet" href="/static/styles.css?v=20260613-profile-row" />
   </head>
   <body>
     <section class="login-screen" id="login-screen" hidden>
@@ -23,7 +23,7 @@
         </label>
         <button type="submit">登入</button>
         <p id="login-error" class="error-text"></p>
-        <p class="login-version">Ver. <span data-app-version>v0.1.16</span></p>
+        <p class="login-version">Ver. <span data-app-version>v0.1.17</span></p>
       </form>
     </section>
 
@@ -31,7 +31,7 @@
       <div class="brand">
         <div class="brand-lockup" aria-label="My Megi">
           <img class="brand-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
-          <span class="app-version" data-app-version>v0.1.16</span>
+          <span class="app-version" data-app-version>v0.1.17</span>
         </div>
         <p>名片與人脈資料庫</p>
       </div>
@@ -71,6 +71,16 @@
         </button>
       </nav>
     </header>
+
+    <section class="user-strip" aria-label="登入使用者">
+      <div class="user-strip-inner">
+        <span>登入用戶</span>
+        <strong id="current-user-name">-</strong>
+        <button class="bare-icon" type="button" id="open-profile-form" title="修改個人資料" aria-label="修改個人資料">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        </button>
+      </div>
+    </section>
 
     <main>
       <section class="workspace main-panel" id="upload-panel" data-main-panel="upload">
@@ -252,7 +262,7 @@
     <footer class="site-footer">
       <span>開發者：Louis Chuang</span>
       <span>Copyright: 2026</span>
-      <span>版本號：<span data-app-version>v0.1.16</span></span>
+      <span>版本號：<span data-app-version>v0.1.17</span></span>
     </footer>
 
     <div class="modal" id="access-token-modal" hidden>
@@ -314,6 +324,37 @@
           <div class="modal-actions">
             <button type="submit" id="user-form-submit">建立用戶</button>
             <button class="ghost" type="button" data-close-modal="user">取消</button>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="modal" id="profile-modal" hidden>
+      <div class="modal-backdrop" data-close-modal="profile"></div>
+      <section class="panel profile-modal-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="profile-form-title">
+        <div class="panel-title">
+          <h2 id="profile-form-title">我的資訊</h2>
+          <button class="bare-icon" type="button" data-close-modal="profile" title="關閉" aria-label="關閉">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <form class="profile-form" id="profile-form">
+          <label>
+            <span>登入帳號</span>
+            <input name="email" type="email" readonly />
+          </label>
+          <label>
+            <span>顯示名稱</span>
+            <input name="displayName" type="text" required />
+          </label>
+          <label>
+            <span>新密碼</span>
+            <input name="password" type="password" autocomplete="new-password" placeholder="留空則不變更" />
+          </label>
+          <p class="helper-text" id="profile-message"></p>
+          <div class="modal-actions">
+            <button type="submit">儲存</button>
+            <button class="ghost" type="button" data-close-modal="profile">取消</button>
           </div>
         </form>
       </section>
@@ -479,6 +520,6 @@
       <span id="upload-toast-message">辨識度 未評估</span>
     </div>
 
-    <script src="/static/app.js?v=20260613-deployment-docs" type="module"></script>
+    <script src="/static/app.js?v=20260613-profile-row" type="module"></script>
   </body>
 </html>

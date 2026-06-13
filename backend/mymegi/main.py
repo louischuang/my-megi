@@ -328,6 +328,11 @@ class UserUpdateRequest(BaseModel):
     status: str | None = None
 
 
+class ProfileUpdateRequest(BaseModel):
+    displayName: str
+    password: str | None = None
+
+
 class ApiAccessTokenCreateRequest(BaseModel):
     name: str = Field(default="Default API Token", max_length=120)
 
@@ -826,6 +831,51 @@ async def logout(
 @app.get("/api/me")
 async def me(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     return {"user": user}
+
+
+@app.patch("/api/me/profile")
+async def update_profile(
+    payload: ProfileUpdateRequest = Body(...),
+    user: dict[str, Any] = Depends(current_user),
+) -> dict[str, Any]:
+    display_name = clean_text(payload.displayName)
+    if not display_name:
+        raise HTTPException(status_code=422, detail="Display name is required")
+    password_hash = hash_password(payload.password) if clean_text(payload.password) else None
+    async with database.acquire() as connection:
+        async with connection.transaction():
+            before = await user_with_role(connection, UUID(user["id"]))
+            if before is None:
+                raise HTTPException(status_code=404, detail="User not found")
+            await connection.execute(
+                """
+                update users
+                set display_name = $2,
+                    password_hash = coalesce($3, password_hash),
+                    updated_at = now()
+                where id = $1
+                  and deleted_at is null
+                """,
+                UUID(user["id"]),
+                display_name,
+                password_hash,
+            )
+            row = await user_with_role(connection, UUID(user["id"]))
+            await connection.execute(
+                """
+                insert into audit_logs (
+                  actor_type, actor_id, action, entity_type, entity_id,
+                  before_data, after_data, metadata
+                )
+                values ('user', $1, 'update_profile', 'user', $2, $3::jsonb, $4::jsonb, $5::jsonb)
+                """,
+                user["id"],
+                UUID(user["id"]),
+                json.dumps(serialize_user(before), ensure_ascii=False),
+                json.dumps(serialize_user(row), ensure_ascii=False),
+                json.dumps({"passwordChanged": password_hash is not None}, ensure_ascii=False),
+            )
+    return {"user": serialize_user(row)}
 
 
 @app.get("/api/access-tokens")

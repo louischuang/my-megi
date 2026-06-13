@@ -195,6 +195,21 @@ Response `200`:
 
 Response `200`: User resource for the current authenticated user.
 
+`PATCH /api/me/profile`
+
+Purpose: update the current user's display name and optional password. The login email is read-only and cannot be changed by this endpoint.
+
+Request:
+
+```json
+{
+  "displayName": "Louis Chuang",
+  "password": "new-password-or-omit"
+}
+```
+
+Response `200`: Updated User resource for the current authenticated user.
+
 ### User Management
 
 System admin only.

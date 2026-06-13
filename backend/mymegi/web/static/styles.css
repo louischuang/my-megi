@@ -43,6 +43,7 @@ body.is-authenticated .login-screen {
 }
 
 body:not(.is-authenticated) .topbar,
+body:not(.is-authenticated) .user-strip,
 body:not(.is-authenticated) main,
 body:not(.is-authenticated) .site-footer {
   display: none;
@@ -201,6 +202,43 @@ button {
 .top-actions .nav-icon.is-active {
   color: #fff;
   filter: drop-shadow(0 0 10px rgb(255 79 163 / 80%));
+}
+
+.user-strip {
+  background: #ffd3e5;
+  border-bottom: 1px solid rgb(255 79 163 / 38%);
+  color: #4c152b;
+}
+
+.user-strip-inner {
+  width: min(1180px, calc(100vw - 32px));
+  min-height: 42px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.user-strip-inner span {
+  color: rgb(76 21 43 / 72%);
+}
+
+.user-strip-inner strong {
+  min-width: 0;
+  max-width: min(420px, 58vw);
+  overflow: hidden;
+  color: #2b0917;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.user-strip .bare-icon {
+  color: #9d1d50;
+}
+
+.user-strip .bare-icon:hover {
+  color: #ff1378;
 }
 
 button[type="submit"] {
@@ -765,6 +803,10 @@ button.compact {
 
 .user-modal-panel {
   width: min(640px, 100%);
+}
+
+.profile-modal-panel {
+  width: min(520px, 100%);
 }
 
 .contact-detail-panel {

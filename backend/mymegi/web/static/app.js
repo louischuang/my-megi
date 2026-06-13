@@ -123,11 +123,19 @@ function syncAdminNavigation() {
   }
 }
 
+function syncCurrentUserDisplay() {
+  const nameLabel = document.querySelector("#current-user-name");
+  if (!nameLabel) return;
+  nameLabel.textContent = state.currentUser?.displayName || state.currentUser?.email || "-";
+  nameLabel.title = state.currentUser?.email || "";
+}
+
 function showLogin() {
   state.currentUser = null;
   document.body.classList.remove("is-authenticated");
   document.querySelector("#login-screen").hidden = false;
   syncAdminNavigation();
+  syncCurrentUserDisplay();
 }
 
 function showAuthenticated(user) {
@@ -135,6 +143,7 @@ function showAuthenticated(user) {
   document.body.classList.add("is-authenticated");
   document.querySelector("#login-screen").hidden = true;
   syncAdminNavigation();
+  syncCurrentUserDisplay();
   showMainTab(preferredMainTab());
 }
 
@@ -708,6 +717,18 @@ function openCreateUserForm() {
   document.querySelector("#user-create-form").elements.email.focus();
 }
 
+function openProfileForm() {
+  if (!state.currentUser) return;
+  const form = document.querySelector("#profile-form");
+  form.reset();
+  form.elements.email.value = state.currentUser.email || "";
+  form.elements.displayName.value = state.currentUser.displayName || "";
+  form.elements.password.value = "";
+  document.querySelector("#profile-message").textContent = "";
+  openModal("profile");
+  form.elements.displayName.focus();
+}
+
 function renderUsers() {
   const body = document.querySelector("#users-body");
   const query = state.userSearchQuery.trim().toLowerCase();
@@ -907,6 +928,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
   closeModal("access-token");
   closeModal("user");
+  closeModal("profile");
   closeModal("review");
   closeModal("contact-detail");
 });
@@ -989,6 +1011,36 @@ document.querySelector("#access-tokens-body").addEventListener("click", async (e
 document.querySelector("#refresh-users").addEventListener("click", refreshAdmin);
 
 document.querySelector("#open-user-form").addEventListener("click", openCreateUserForm);
+
+document.querySelector("#open-profile-form").addEventListener("click", openProfileForm);
+
+document.querySelector("#profile-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const values = Object.fromEntries(new FormData(form).entries());
+  const message = document.querySelector("#profile-message");
+  message.textContent = "";
+  const payload = {
+    displayName: values.displayName,
+  };
+  if (values.password) {
+    payload.password = values.password;
+  }
+  try {
+    const data = await fetchJson("/api/me/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.currentUser = data.user;
+    syncCurrentUserDisplay();
+    message.textContent = "已更新。";
+    form.elements.password.value = "";
+    window.setTimeout(() => closeModal("profile"), 600);
+  } catch (error) {
+    message.textContent = error.message || "更新失敗";
+  }
+});
 
 document.querySelector("#user-search").addEventListener("input", (event) => {
   state.userSearchQuery = new FormData(event.currentTarget).get("q") || "";

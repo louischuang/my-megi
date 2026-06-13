@@ -136,6 +136,7 @@ mymegi health
 目前 Web UI 提供：
 
 - 登入、登出與依角色切換導覽。
+- 登入後顯示目前用戶，並可修改自己的顯示名稱與密碼。
 - 系統管理員用戶管理頁。
 - Dashboard 統計聯絡人、公司、名片與待處理名片數。
 - 名片上傳表單，支援認識場合、日期與備註。
@@ -149,6 +150,7 @@ API 會以 OpenAPI/Swagger 文件公開，初期端點包含：
 - `POST /api/auth/login`: 登入並取得 session cookie 與 `sessionToken`。
 - `POST /api/auth/logout`: 登出並撤銷目前 session。
 - `GET /api/me`: 取得目前登入使用者。
+- `PATCH /api/me/profile`: 修改目前登入使用者的顯示名稱與密碼，登入帳號不可修改。
 - `GET /api/access-tokens`: 取得目前登入使用者的 API Access Token 列表。
 - `POST /api/access-tokens`: 產生新的 API Access Token，並讓原 active token 過期。
 - `POST /api/access-tokens/{id}/revoke`: 撤銷目前使用者的 API Access Token。
