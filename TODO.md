@@ -194,7 +194,7 @@
 - [x] API token MVP：用戶與內容管理員可自助產生 API Access Token，且每個帳號最多一組 active token。
 - [x] rate limit：登入、API Access Token 產生與撤銷端點已有單機 in-memory sliding window 限流。
 - [x] audit log 完整覆蓋登入、登出、使用者管理、API token 與資料操作。
-- [ ] backup/restore 文件。
+- [x] backup/restore 文件。
 - [ ] deployment 文件。
 
 驗證方式：

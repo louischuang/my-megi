@@ -58,6 +58,7 @@ MVP 建議採用單體服務，先降低部署與維護成本：
 - `api_access_tokens`: 用戶與內容管理員可自助建立的 API Access Token；每個帳號最多一組 active token。
 
 詳細 PostgreSQL schema、索引、關聯與 migration 規劃見 [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md)。
+備份與還原流程見 [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md)。
 
 ## Docker 執行目標
 
@@ -187,7 +188,7 @@ mymegi notes add CONTACT_ID --text "由 Kevin 介紹，討論邊緣 AI 部署"
 - 正式環境若仍使用本地 LLM，需準備 GPU/CPU 資源與模型管理策略。
 - API Access Token MVP 已支援用戶與內容管理員自助產生；登入與 API token 敏感端點已有單機 rate limit。多副本正式環境建議改用 Redis 或 API gateway 做集中限流。
 - audit log 已覆蓋登入/登出、使用者管理、API token、名片上傳/OCR/LLM、聯絡人與筆記資料操作。
-- 多人使用已完成基本資料擁有者欄位與查詢層權限過濾；後續仍需補備份/還原與部署文件。
+- 多人使用已完成基本資料擁有者欄位與查詢層權限過濾；備份/還原文件已完成，後續仍需補部署文件。
 
 ## 已完成：多人與權限 MVP
 

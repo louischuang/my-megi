@@ -10,6 +10,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml README.md package.json /app/
+COPY docs /app/docs
 COPY backend /app/backend
 COPY cli /app/cli
 

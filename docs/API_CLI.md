@@ -617,5 +617,5 @@ mymegi notes add contact_123 \
 - Rate limiting。
 - Audit logs。
 - Pagination consistency。
-- Backup and restore guide。
+- Backup and restore guide: [BACKUP_RESTORE.md](BACKUP_RESTORE.md).
 - Data export endpoint。
