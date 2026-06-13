@@ -102,22 +102,31 @@ function isSystemAdmin() {
   return state.currentUser?.role === "system_admin";
 }
 
+function canAccessAdminTab() {
+  return isSystemAdmin();
+}
+
+function syncAdminNavigation() {
+  const adminButton = document.querySelector('[data-main-tab="admin"]');
+  if (adminButton) {
+    adminButton.hidden = !canAccessAdminTab();
+    adminButton.setAttribute("aria-hidden", String(!canAccessAdminTab()));
+    adminButton.tabIndex = canAccessAdminTab() ? 0 : -1;
+  }
+}
+
 function showLogin() {
   state.currentUser = null;
   document.body.classList.remove("is-authenticated");
   document.querySelector("#login-screen").hidden = false;
+  syncAdminNavigation();
 }
 
 function showAuthenticated(user) {
   state.currentUser = user;
   document.body.classList.add("is-authenticated");
   document.querySelector("#login-screen").hidden = true;
-  document.querySelectorAll(".admin-only").forEach((element) => {
-    element.hidden = !isSystemAdmin();
-  });
-  document.querySelector('[data-main-tab="upload"]').hidden = isSystemAdmin();
-  document.querySelector('[data-main-tab="contacts"]').hidden = isSystemAdmin();
-  document.querySelector('[data-main-tab="api"]').hidden = isSystemAdmin();
+  syncAdminNavigation();
   showMainTab(isSystemAdmin() ? "admin" : "upload");
 }
 
@@ -143,10 +152,7 @@ function detailValue(value) {
 }
 
 function showMainTab(name) {
-  if (isSystemAdmin() && name !== "admin") {
-    name = "admin";
-  }
-  if (!isSystemAdmin() && name === "admin") {
+  if (name === "admin" && !canAccessAdminTab()) {
     name = "upload";
   }
   document.querySelectorAll("[data-main-panel]").forEach((panel) => {
@@ -874,6 +880,12 @@ document.querySelectorAll("[data-close-modal]").forEach((button) => {
 document.addEventListener("click", (event) => {
   const tabButton = event.target.closest("[data-main-tab]");
   if (!tabButton) return;
+  if (tabButton.dataset.mainTab === "admin" && !canAccessAdminTab()) {
+    event.preventDefault();
+    syncAdminNavigation();
+    showMainTab("upload");
+    return;
+  }
   showMainTab(tabButton.dataset.mainTab);
 });
 
