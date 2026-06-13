@@ -395,6 +395,37 @@ def serialize_api_access_token(row: Any, token: str | None = None) -> dict[str, 
     return payload
 
 
+async def write_audit_log(
+    connection: Any,
+    *,
+    action: str,
+    entity_type: str,
+    entity_id: UUID | None = None,
+    actor_type: str = "user",
+    actor_id: str | None = None,
+    before_data: dict[str, Any] | None = None,
+    after_data: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    await connection.execute(
+        """
+        insert into audit_logs (
+          actor_type, actor_id, action, entity_type, entity_id,
+          before_data, after_data, metadata
+        )
+        values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb)
+        """,
+        actor_type,
+        actor_id,
+        action,
+        entity_type,
+        entity_id,
+        json.dumps(before_data, ensure_ascii=False) if before_data is not None else None,
+        json.dumps(after_data, ensure_ascii=False) if after_data is not None else None,
+        json.dumps(metadata or {}, ensure_ascii=False),
+    )
+
+
 async def upsert_company(connection: Any, payload: ConfirmCardRequest) -> UUID | None:
     company_name = clean_text(payload.company.name) or clean_text(payload.company.englishName)
     normalized_company = normalize_lookup(company_name) if company_name else None
@@ -705,6 +736,18 @@ async def login(
             payload.email.strip(),
         )
         if user is None or user["status"] != "active" or not verify_password(payload.password, user["password_hash"]):
+            await write_audit_log(
+                connection,
+                action="login_failed",
+                entity_type="auth_session",
+                actor_type="anonymous",
+                metadata={
+                    "email": payload.email.strip(),
+                    "reason": "invalid_credentials_or_inactive",
+                    "clientIp": client_identifier(request),
+                    "userAgent": request.headers.get("user-agent"),
+                },
+            )
             raise HTTPException(status_code=401, detail="Invalid email or password")
 
         token = secrets.token_urlsafe(32)
@@ -1321,22 +1364,32 @@ async def run_card_ocr(card_id: UUID, user: dict[str, Any]) -> dict[str, Any]:
             )
     except OcrError as exc:
         async with database.acquire() as connection:
-            await connection.execute(
-                """
-                update business_cards
-                set status = 'failed',
-                    error_code = $2,
-                    error_message = $3,
-                    ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $4::jsonb,
-                    updated_at = now(),
-                    processed_at = now()
-                where id = $1
-                """,
-                card_id,
-                exc.code,
-                exc.message,
-                json.dumps({"lastOcrError": exc.metadata}),
-            )
+            async with connection.transaction():
+                await connection.execute(
+                    """
+                    update business_cards
+                    set status = 'failed',
+                        error_code = $2,
+                        error_message = $3,
+                        ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $4::jsonb,
+                        updated_at = now(),
+                        processed_at = now()
+                    where id = $1
+                    """,
+                    card_id,
+                    exc.code,
+                    exc.message,
+                    json.dumps({"lastOcrError": exc.metadata}),
+                )
+                await write_audit_log(
+                    connection,
+                    action="ocr_business_card_failed",
+                    entity_type="business_card",
+                    entity_id=card_id,
+                    actor_id=user["id"],
+                    after_data={"status": "failed", "errorCode": exc.code, "errorMessage": exc.message},
+                    metadata={"ocrMetadata": exc.metadata},
+                )
         raise HTTPException(status_code=422, detail={"code": exc.code, "message": exc.message})
 
     side_metadata = detect_card_sides(front_result.text, back_result.text if back_result else None)
@@ -1346,34 +1399,52 @@ async def run_card_ocr(card_id: UUID, user: dict[str, Any]) -> dict[str, Any]:
     merged_text = "\n\n".join(side_texts).strip()
     status = "completed" if merged_text else "needs_review"
     async with database.acquire() as connection:
-        await connection.execute(
-            """
-            update business_cards
-            set status = $2,
-                ocr_engine = $3,
-                ocr_text = $4,
-                ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $5::jsonb,
-                side_metadata = coalesce(side_metadata, '{}'::jsonb) || $6::jsonb,
-                error_code = null,
-                error_message = null,
-                updated_at = now(),
-                processed_at = now()
-            where id = $1
-            """,
-            card_id,
-            status,
-            settings.ocr_engine,
-            merged_text,
-            json.dumps(
-                {
-                    "front": {"lastOcrRun": front_result.metadata},
-                    "back": {"lastOcrRun": back_result.metadata} if back_result else None,
-                    "lastOcrRun": front_result.metadata,
+        async with connection.transaction():
+            await connection.execute(
+                """
+                update business_cards
+                set status = $2,
+                    ocr_engine = $3,
+                    ocr_text = $4,
+                    ocr_metadata = coalesce(ocr_metadata, '{}'::jsonb) || $5::jsonb,
+                    side_metadata = coalesce(side_metadata, '{}'::jsonb) || $6::jsonb,
+                    error_code = null,
+                    error_message = null,
+                    updated_at = now(),
+                    processed_at = now()
+                where id = $1
+                """,
+                card_id,
+                status,
+                settings.ocr_engine,
+                merged_text,
+                json.dumps(
+                    {
+                        "front": {"lastOcrRun": front_result.metadata},
+                        "back": {"lastOcrRun": back_result.metadata} if back_result else None,
+                        "lastOcrRun": front_result.metadata,
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps(side_metadata, ensure_ascii=False),
+            )
+            await write_audit_log(
+                connection,
+                action="ocr_business_card",
+                entity_type="business_card",
+                entity_id=card_id,
+                actor_id=user["id"],
+                after_data={
+                    "status": status,
+                    "ocrEngine": settings.ocr_engine,
+                    "ocrTextLength": len(merged_text),
                 },
-                ensure_ascii=False,
-            ),
-            json.dumps(side_metadata, ensure_ascii=False),
-        )
+                metadata={
+                    "front": front_result.metadata,
+                    "back": back_result.metadata if back_result else None,
+                    "sideMetadata": side_metadata,
+                },
+            )
 
     return {
         "cardId": str(card_id),
@@ -1436,27 +1507,42 @@ async def run_card_structure(card_id: UUID, user: dict[str, Any]) -> dict[str, A
     )
     confidence = draft_confidence(result.data)
     async with database.acquire() as connection:
-        await connection.execute(
-            """
-            update business_cards
-            set status = 'needs_review',
-                llm_provider = $2,
-                llm_model = $3,
-                llm_raw_output = $4::jsonb,
-                extracted_data = $5::jsonb,
-                extraction_confidence = $6,
-                extra_notes = $7,
-                updated_at = now()
-            where id = $1
-            """,
-            card_id,
-            result.source,
-            settings.llm_model,
-            json.dumps(result.raw_output, ensure_ascii=False),
-            json.dumps(result.data, ensure_ascii=False),
-            confidence,
-            clean_text(result.data.get("extraNotes")),
-        )
+        async with connection.transaction():
+            await connection.execute(
+                """
+                update business_cards
+                set status = 'needs_review',
+                    llm_provider = $2,
+                    llm_model = $3,
+                    llm_raw_output = $4::jsonb,
+                    extracted_data = $5::jsonb,
+                    extraction_confidence = $6,
+                    extra_notes = $7,
+                    updated_at = now()
+                where id = $1
+                """,
+                card_id,
+                result.source,
+                settings.llm_model,
+                json.dumps(result.raw_output, ensure_ascii=False),
+                json.dumps(result.data, ensure_ascii=False),
+                confidence,
+                clean_text(result.data.get("extraNotes")),
+            )
+            await write_audit_log(
+                connection,
+                action="structure_business_card",
+                entity_type="business_card",
+                entity_id=card_id,
+                actor_id=user["id"],
+                after_data={
+                    "status": "needs_review",
+                    "llmProvider": result.source,
+                    "llmModel": settings.llm_model,
+                    "extractionConfidence": confidence,
+                },
+                metadata={"draftKeys": sorted(result.data.keys())},
+            )
 
     return {
         "cardId": str(card_id),
@@ -1659,30 +1745,48 @@ async def upload_card(
         "note": note,
     }
     async with database.acquire() as connection:
-        await connection.execute(
-            """
-            insert into business_cards (
-              id, owner_user_id, original_filename, storage_path, mime_type, file_size_bytes,
-              checksum_sha256, back_original_filename, back_storage_path, back_mime_type,
-              back_file_size_bytes, back_checksum_sha256, status, ocr_engine, ocr_metadata
+        async with connection.transaction():
+            await connection.execute(
+                """
+                insert into business_cards (
+                  id, owner_user_id, original_filename, storage_path, mime_type, file_size_bytes,
+                  checksum_sha256, back_original_filename, back_storage_path, back_mime_type,
+                  back_file_size_bytes, back_checksum_sha256, status, ocr_engine, ocr_metadata
+                )
+                values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14::jsonb)
+                """,
+                card_id,
+                UUID(user["id"]),
+                file.filename or safe_name,
+                str(storage_path),
+                content_type,
+                len(content),
+                checksum,
+                back_upload.filename if back_upload else None,
+                str(back_storage_path) if back_storage_path else None,
+                back_content_type,
+                len(back_content) if back_content else None,
+                back_checksum,
+                settings.ocr_engine,
+                json.dumps({"uploadContext": upload_context}, ensure_ascii=False),
             )
-            values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'pending', $13, $14::jsonb)
-            """,
-            card_id,
-            UUID(user["id"]),
-            file.filename or safe_name,
-            str(storage_path),
-            content_type,
-            len(content),
-            checksum,
-            back_upload.filename if back_upload else None,
-            str(back_storage_path) if back_storage_path else None,
-            back_content_type,
-            len(back_content) if back_content else None,
-            back_checksum,
-            settings.ocr_engine,
-            json.dumps({"uploadContext": upload_context}, ensure_ascii=False),
-        )
+            await write_audit_log(
+                connection,
+                action="upload_business_card",
+                entity_type="business_card",
+                entity_id=card_id,
+                actor_id=user["id"],
+                after_data={
+                    "originalFilename": file.filename or safe_name,
+                    "backOriginalFilename": back_upload.filename if back_upload else None,
+                    "mimeType": content_type,
+                    "backMimeType": back_content_type,
+                    "fileSizeBytes": len(content),
+                    "backFileSizeBytes": len(back_content) if back_content else None,
+                    "status": "pending",
+                },
+                metadata={"uploadContext": upload_context},
+            )
 
     try:
         process_result = await process_card_for_review(card_id, user)
@@ -1846,13 +1950,14 @@ async def confirm_card(
 
             await connection.execute(
                 """
-                insert into audit_logs (action, entity_type, entity_id, after_data, metadata)
-                values ($4, 'contact', $1, $2::jsonb, $3::jsonb)
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, after_data, metadata)
+                values ('user', $5, $4, 'contact', $1, $2::jsonb, $3::jsonb)
                 """,
                 contact_id,
                 json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
                 json.dumps({"businessCardId": str(card_id), "result": action}, ensure_ascii=False),
                 "confirm_card" if action == "created" else "update_card_contact",
+                user["id"],
             )
 
     return {
@@ -2232,8 +2337,8 @@ async def update_contact(
 
             await connection.execute(
                 """
-                insert into audit_logs (action, entity_type, entity_id, after_data, metadata)
-                values ('update_contact', 'contact', $1, $2::jsonb, $3::jsonb)
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, after_data, metadata)
+                values ('user', $4, 'update_contact', 'contact', $1, $2::jsonb, $3::jsonb)
                 """,
                 contact_id,
                 json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
@@ -2241,6 +2346,7 @@ async def update_contact(
                     {"businessCardId": str(existing["source_business_card_id"]) if existing["source_business_card_id"] else None},
                     ensure_ascii=False,
                 ),
+                user["id"],
             )
 
     return {"contactId": str(contact_id), "status": "updated"}
@@ -2257,19 +2363,50 @@ async def delete_contact(
     if user["role"] != "content_admin":
         params.append(UUID(user["id"]))
     async with database.acquire() as connection:
-        result = await connection.execute(
-            f"""
-            update contacts
-            set deleted_at = now(),
-                updated_at = now()
-            where id = $1
-              and deleted_at is null
-              {owner_clause}
-            """,
-            *params,
-        )
-    if result == "UPDATE 0":
-        raise HTTPException(status_code=404, detail="Contact not found")
+        async with connection.transaction():
+            contact = await connection.fetchrow(
+                f"""
+                select id, owner_user_id, display_name, english_name, title,
+                       source_business_card_id, created_at, updated_at
+                from contacts
+                where id = $1
+                  and deleted_at is null
+                  {owner_clause}
+                for update
+                """,
+                *params,
+            )
+            if contact is None:
+                raise HTTPException(status_code=404, detail="Contact not found")
+            await connection.execute(
+                """
+                update contacts
+                set deleted_at = now(),
+                    updated_at = now()
+                where id = $1
+                """,
+                contact_id,
+            )
+            await write_audit_log(
+                connection,
+                action="delete_contact",
+                entity_type="contact",
+                entity_id=contact_id,
+                actor_id=user["id"],
+                before_data={
+                    "id": str(contact["id"]),
+                    "ownerUserId": str(contact["owner_user_id"]) if contact["owner_user_id"] else None,
+                    "displayName": contact["display_name"],
+                    "englishName": contact["english_name"],
+                    "title": contact["title"],
+                    "sourceBusinessCardId": (
+                        str(contact["source_business_card_id"]) if contact["source_business_card_id"] else None
+                    ),
+                    "createdAt": contact["created_at"].isoformat(),
+                    "updatedAt": contact["updated_at"].isoformat(),
+                },
+                after_data={"status": "deleted"},
+            )
     return {"id": str(contact_id), "status": "deleted"}
 
 
@@ -2325,14 +2462,15 @@ async def add_relationship_note(
             )
             await connection.execute(
                 """
-                insert into audit_logs (action, entity_type, entity_id, after_data, metadata)
+                insert into audit_logs (actor_type, actor_id, action, entity_type, entity_id, after_data, metadata)
                 values (
-                  'add_relationship_note', 'relationship_note', $1, $2::jsonb, $3::jsonb
+                  'user', $4, 'add_relationship_note', 'relationship_note', $1, $2::jsonb, $3::jsonb
                 )
                 """,
                 note_id,
                 json.dumps(payload.model_dump(mode="json"), ensure_ascii=False),
                 json.dumps({"contactId": str(contact_id)}, ensure_ascii=False),
+                user["id"],
             )
 
     return {
