@@ -145,6 +145,9 @@ function showMainTab(name) {
   if (isSystemAdmin() && name !== "admin") {
     name = "admin";
   }
+  if (!isSystemAdmin() && name === "admin") {
+    name = "upload";
+  }
   document.querySelectorAll("[data-main-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.mainPanel !== name;
   });
@@ -641,6 +644,30 @@ async function revokeAccessToken(tokenId) {
   await loadAccessTokens();
 }
 
+function resetUserForm() {
+  const form = document.querySelector("#user-create-form");
+  form.reset();
+  form.elements.userId.value = "";
+  form.elements.password.required = true;
+  document.querySelector("#user-form-title").textContent = "建立用戶";
+  document.querySelector("#user-form-submit").textContent = "建立用戶";
+  document.querySelector("#user-form-reset").hidden = true;
+}
+
+function fillUserForm(user) {
+  const form = document.querySelector("#user-create-form");
+  form.elements.userId.value = user.id;
+  form.elements.email.value = user.email;
+  form.elements.displayName.value = user.displayName;
+  form.elements.password.value = "";
+  form.elements.password.required = false;
+  form.elements.role.value = user.role;
+  document.querySelector("#user-form-title").textContent = "編輯用戶";
+  document.querySelector("#user-form-submit").textContent = "更新用戶";
+  document.querySelector("#user-form-reset").hidden = false;
+  form.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
 async function loadUsers() {
   const data = await fetchJson("/api/users");
   const body = document.querySelector("#users-body");
@@ -659,6 +686,14 @@ async function loadUsers() {
         <td>${escapeHtml(formatDate(user.lastLoginAt))}</td>
         <td>
           <div class="row-actions">
+            <button class="bare-icon" type="button"
+              data-edit-user="${escapeHtml(user.id)}"
+              data-email="${escapeHtml(user.email)}"
+              data-display-name="${escapeHtml(user.displayName)}"
+              data-role="${escapeHtml(user.role)}"
+              title="編輯" aria-label="編輯">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+            </button>
             ${
               user.status === "active"
                 ? `<button class="bare-icon danger" type="button" data-disable-user="${escapeHtml(user.id)}" title="停用" aria-label="停用">×</button>`
@@ -896,16 +931,39 @@ document.querySelector("#user-create-form").addEventListener("submit", async (ev
   event.preventDefault();
   const form = event.currentTarget;
   const values = Object.fromEntries(new FormData(form).entries());
-  await fetchJson("/api/users", {
-    method: "POST",
+  const userId = values.userId;
+  const payload = {
+    email: values.email,
+    displayName: values.displayName,
+    role: values.role,
+  };
+  if (values.password) {
+    payload.password = values.password;
+  }
+  if (!userId) {
+    payload.password = values.password;
+    payload.status = "active";
+  }
+  await fetchJson(userId ? `/api/users/${userId}` : "/api/users", {
+    method: userId ? "PATCH" : "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(values),
+    body: JSON.stringify(payload),
   });
-  form.reset();
+  resetUserForm();
   await refreshAdmin();
 });
 
 document.querySelector("#users-body").addEventListener("click", async (event) => {
+  const editButton = event.target.closest("[data-edit-user]");
+  if (editButton) {
+    fillUserForm({
+      id: editButton.dataset.editUser,
+      email: editButton.dataset.email,
+      displayName: editButton.dataset.displayName,
+      role: editButton.dataset.role,
+    });
+    return;
+  }
   const disableButton = event.target.closest("[data-disable-user]");
   if (disableButton) {
     await fetchJson(`/api/users/${disableButton.dataset.disableUser}/disable`, { method: "POST" });
@@ -918,6 +976,8 @@ document.querySelector("#users-body").addEventListener("click", async (event) =>
     await refreshAdmin();
   }
 });
+
+document.querySelector("#user-form-reset").addEventListener("click", resetUserForm);
 
 document.querySelector("#upload-toast-close").addEventListener("click", () => {
   document.querySelector("#upload-toast").hidden = true;

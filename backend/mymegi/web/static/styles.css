@@ -314,6 +314,18 @@ form {
   gap: 14px;
 }
 
+.form-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.form-heading h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
 label {
   display: grid;
   gap: 7px;
