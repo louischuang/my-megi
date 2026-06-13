@@ -761,6 +761,7 @@ function openProfileForm() {
   form.elements.email.value = state.currentUser.email || "";
   form.elements.displayName.value = state.currentUser.displayName || "";
   form.elements.password.value = "";
+  form.elements.passwordConfirm.value = "";
   document.querySelector("#profile-message").textContent = "";
   openModal("profile");
   form.elements.displayName.focus();
@@ -1071,7 +1072,13 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
     displayName: values.displayName,
   };
   if (values.password) {
+    if (values.password !== values.passwordConfirm) {
+      message.textContent = "確認新密碼不一致。";
+      form.elements.passwordConfirm.focus();
+      return;
+    }
     payload.password = values.password;
+    payload.passwordConfirm = values.passwordConfirm;
   }
   try {
     const data = await fetchJson("/api/me/profile", {
@@ -1083,6 +1090,7 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
     syncCurrentUserDisplay();
     message.textContent = "已更新。";
     form.elements.password.value = "";
+    form.elements.passwordConfirm.value = "";
     window.setTimeout(() => closeModal("profile"), 600);
   } catch (error) {
     message.textContent = error.message || "更新失敗";

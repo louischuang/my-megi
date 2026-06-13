@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "my-megi"
-version = "0.1.21"
+version = "0.1.22"
 description = "Local-first business card and relationship manager."
 readme = "README.md"
 requires-python = ">=3.12"

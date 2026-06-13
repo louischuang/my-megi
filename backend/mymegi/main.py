@@ -331,6 +331,7 @@ class UserUpdateRequest(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     displayName: str
     password: str | None = None
+    passwordConfirm: str | None = None
 
 
 class ApiAccessTokenCreateRequest(BaseModel):
@@ -846,7 +847,11 @@ async def update_profile(
     display_name = clean_text(payload.displayName)
     if not display_name:
         raise HTTPException(status_code=422, detail="Display name is required")
-    password_hash = hash_password(payload.password) if clean_text(payload.password) else None
+    password = clean_text(payload.password)
+    password_confirm = clean_text(payload.passwordConfirm)
+    if password and password != password_confirm:
+        raise HTTPException(status_code=422, detail="Password confirmation does not match")
+    password_hash = hash_password(password) if password else None
     async with database.acquire() as connection:
         async with connection.transaction():
             before = await user_with_role(connection, UUID(user["id"]))
