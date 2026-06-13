@@ -603,7 +603,7 @@ async function loadAccessTokens() {
       (item) => `
       <tr>
         <td>${escapeHtml(item.name)}</td>
-        <td><code>${escapeHtml(item.prefix)}</code></td>
+        <td><code>${escapeHtml(item.prefix)}...</code></td>
         <td><span class="badge">${escapeHtml(item.status)}</span></td>
         <td>${escapeHtml(formatDate(item.lastUsedAt))}</td>
         <td>${escapeHtml(formatDate(item.createdAt))}</td>
@@ -624,9 +624,7 @@ async function loadAccessTokens() {
 
 async function createAccessToken(form) {
   const values = Object.fromEntries(new FormData(form).entries());
-  const result = document.querySelector("#access-token-result");
   const tokenValue = document.querySelector("#access-token-value");
-  result.hidden = true;
   tokenValue.textContent = "";
   const data = await fetchJson("/api/access-tokens", {
     method: "POST",
@@ -634,15 +632,32 @@ async function createAccessToken(form) {
     body: JSON.stringify({ name: values.name || "Default API Token" }),
   });
   tokenValue.textContent = data.item.token;
-  result.hidden = false;
+  document.querySelector("#access-token-hint").textContent = "這個 token 只會顯示一次，請立刻保存。";
+  openModal("access-token");
   await loadAccessTokens();
 }
 
 async function revokeAccessToken(tokenId) {
   if (!window.confirm("確定撤銷這組 API Access Token？")) return;
   await fetchJson(`/api/access-tokens/${tokenId}/revoke`, { method: "POST" });
-  document.querySelector("#access-token-result").hidden = true;
   await loadAccessTokens();
+}
+
+async function copyAccessToken() {
+  const tokenValue = document.querySelector("#access-token-value");
+  const token = tokenValue.textContent.trim();
+  if (!token) return;
+  try {
+    await navigator.clipboard.writeText(token);
+    document.querySelector("#access-token-hint").textContent = "已複製 Token。";
+  } catch {
+    const selection = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(tokenValue);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.querySelector("#access-token-hint").textContent = "無法自動複製，已選取 Token。";
+  }
 }
 
 function resetUserForm() {
@@ -864,6 +879,7 @@ document.addEventListener("click", (event) => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  closeModal("access-token");
   closeModal("user");
   closeModal("review");
   closeModal("contact-detail");
@@ -935,6 +951,8 @@ document.querySelector("#access-token-form").addEventListener("submit", async (e
   event.preventDefault();
   await createAccessToken(event.currentTarget);
 });
+
+document.querySelector("#copy-access-token").addEventListener("click", copyAccessToken);
 
 document.querySelector("#access-tokens-body").addEventListener("click", async (event) => {
   const revokeButton = event.target.closest("[data-revoke-token]");

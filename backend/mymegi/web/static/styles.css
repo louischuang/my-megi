@@ -781,7 +781,7 @@ button.compact {
 
 .token-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(260px, 360px);
   gap: 18px;
   margin-bottom: 18px;
 }
@@ -802,6 +802,17 @@ button.compact {
   background: rgb(255 77 139 / 10%);
 }
 
+.token-modal-panel {
+  width: min(680px, 100%);
+}
+
+.token-value-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+}
+
 .token-result code {
   min-width: 0;
   padding: 10px;
@@ -810,6 +821,32 @@ button.compact {
   background: var(--surface-3);
   color: var(--ink);
   overflow-wrap: anywhere;
+}
+
+.access-token-table {
+  table-layout: fixed;
+  min-width: 860px;
+}
+
+.token-col-name {
+  width: 24%;
+}
+
+.token-col-prefix {
+  width: 16%;
+}
+
+.token-col-status {
+  width: 12%;
+}
+
+.token-col-last-used,
+.token-col-created {
+  width: 19%;
+}
+
+.token-col-actions {
+  width: 10%;
 }
 
 .detail-grid section {

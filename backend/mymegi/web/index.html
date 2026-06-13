@@ -23,7 +23,7 @@
         </label>
         <button type="submit">登入</button>
         <p id="login-error" class="error-text"></p>
-        <p class="login-version">Ver. <span data-app-version>v0.1.8</span></p>
+        <p class="login-version">Ver. <span data-app-version>v0.1.9</span></p>
       </form>
     </section>
 
@@ -31,7 +31,7 @@
       <div class="brand">
         <div class="brand-lockup" aria-label="My Megi">
           <img class="brand-logo" src="/static/assets/my-megi-logo.png?v=20260612-calligraphy-small" alt="My Megi" />
-          <span class="app-version" data-app-version>v0.1.8</span>
+          <span class="app-version" data-app-version>v0.1.9</span>
         </div>
         <p>名片與人脈資料庫</p>
       </div>
@@ -182,14 +182,17 @@
               <button type="submit">產生新的 Token</button>
               <p class="helper-text">重新產生後，原本 Active token 會自動改成過期。</p>
             </form>
-            <div class="token-result" id="access-token-result" hidden>
-              <strong>新的 API Access Token</strong>
-              <code id="access-token-value"></code>
-              <small>這個 token 只會顯示一次，請立刻保存。</small>
-            </div>
           </div>
           <div class="table-wrap">
-            <table>
+            <table class="access-token-table">
+              <colgroup>
+                <col class="token-col-name" />
+                <col class="token-col-prefix" />
+                <col class="token-col-status" />
+                <col class="token-col-last-used" />
+                <col class="token-col-created" />
+                <col class="token-col-actions" />
+              </colgroup>
               <thead>
                 <tr>
                   <th>名稱</th>
@@ -247,8 +250,29 @@
     <footer class="site-footer">
       <span>開發者：Louis Chuang</span>
       <span>Copyright: 2026</span>
-      <span>版本號：<span data-app-version>v0.1.8</span></span>
+      <span>版本號：<span data-app-version>v0.1.9</span></span>
     </footer>
+
+    <div class="modal" id="access-token-modal" hidden>
+      <div class="modal-backdrop" data-close-modal="access-token"></div>
+      <section class="panel token-modal-panel modal-panel" role="dialog" aria-modal="true" aria-labelledby="access-token-title">
+        <div class="panel-title">
+          <h2 id="access-token-title">新的 API Access Token</h2>
+          <button class="bare-icon" type="button" data-close-modal="access-token" title="關閉" aria-label="關閉">
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg>
+          </button>
+        </div>
+        <div class="token-result">
+          <div class="token-value-row">
+            <code id="access-token-value"></code>
+            <button class="bare-icon" type="button" id="copy-access-token" title="複製 Token" aria-label="複製 Token">
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </button>
+          </div>
+          <small id="access-token-hint">這個 token 只會顯示一次，請立刻保存。</small>
+        </div>
+      </section>
+    </div>
 
     <div class="modal" id="user-modal" hidden>
       <div class="modal-backdrop" data-close-modal="user"></div>
